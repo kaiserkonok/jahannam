@@ -65,6 +65,9 @@ const COLLAPSE_TEXTS = [
   'You fall. The ground burns your face. But death does not come — death is a mercy of the old world.',
   'You beg for water. Something boiling touches your lips and you wish you had never asked.',
   'You close your eyes. The voices continue inside your skull.',
+  'You pray for death the way a drowning man prays for air. In this place there is neither dying nor living.',
+  'No death is decreed for you here, and your torment will not be lightened — not for one breath.',
+  'Death comes at you from every side at once. And it never arrives.',
 ];
 
 // ---------------------------------------------------------------- dom
@@ -397,6 +400,11 @@ const frostMat = new THREE.MeshStandardMaterial({ color: 0x0a1626, emissive: 0x8
 const thornMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 1 });
 const fruitMat = new THREE.MeshStandardMaterial({ color: 0x201000, emissive: 0xffb300, emissiveIntensity: 2.4 });
 const streamMat = new THREE.MeshStandardMaterial({ color: 0x1a0500, emissive: 0xff6a00, emissiveIntensity: 2.6 });
+const sickMat = new THREE.MeshStandardMaterial({ color: 0x1a2005, emissive: 0x8a9a1a, emissiveIntensity: 1.4, roughness: 0.6 });
+const goldMat = new THREE.MeshStandardMaterial({ color: 0x2a1a05, emissive: 0xffb300, emissiveIntensity: 1.3, metalness: 0.85, roughness: 0.35 });
+const darkWaterMat = new THREE.MeshStandardMaterial({ color: 0x030303, roughness: 0.2, metalness: 0.5 });
+const rimMat = new THREE.MeshStandardMaterial({ color: 0x0a0000, emissive: 0xff1a00, emissiveIntensity: 0.6 });
+const goldSpriteMat = new THREE.SpriteMaterial({ map: pitTex, color: 0xffd27a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.55 });
 
 const pulsers: { m: THREE.MeshStandardMaterial; base: number; amp: number; speed: number; seed: number }[] = [];
 function pulse(mat: THREE.MeshStandardMaterial, base: number, amp = 0.5, speed = 2) {
@@ -544,6 +552,26 @@ function buildStations() {
     riser(P, cx, cy + 3, cz, 7, 1.1, 2.4, pitTex);
     SF(zi, 'kneel', cx + 4.2, cz + 1, -Math.PI / 2.3, 1);
     addStation(zi, cx, cz, 16, 'Water like molten brass — it scalds the face as it nears. What an evil drink, what an evil rest.', 'Quran 18:29');
+    // pus-drink (14:16-17): sickly pool + kneeling drinker + head-back waiter
+    {
+      const px = -10, pz = 80, py = groundH(px, pz);
+      poolDisc(P, px, pz, 2.2, sickMat);
+      riser(P, px, py + 1, pz, 6, 0.5, 2.2, fogTex, 0.4);
+      SF(zi, 'kneel', px + 3.2, pz + 1, -Math.PI / 2, 1);
+      SF(zi, 'headback', px - 3.5, pz - 2, Math.PI / 3, 1);
+      addStation(zi, px, pz, 15, 'Sip, and choke. Death crowds you from every side, yet you will not die.', 'Quran 14:16-17');
+    }
+    // seventy parts of fire (Bukhari 3265; Muslim 2843): campfire vs towering glow wall
+    {
+      const fx = 85, fz = -55, fy = groundH(fx, fz);
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        flame(P, fx + Math.cos(a) * 1.5, fy + 0.8, fz + Math.sin(a) * 1.5, 1.6, 2.4, pitTex);
+      }
+      flame(P, fx + 8, fy + 7, fz, 14, 18, emberTex, 0.55);
+      SF(zi, 'stand', fx + 4, fz, -Math.PI / 2, 1);
+      addStation(zi, fx, fz, 16, 'Everything you called hot was one part. Here are the other sixty-nine.', 'Bukhari 3265; Muslim 2843');
+    }
   }
   // ——— DEPTH II — Pit of Whispers ———
   { const zi = 1, P = zoneProps[zi];
@@ -567,6 +595,34 @@ function buildStations() {
     poolDisc(P, hx, hz, 3, brassMat);
     SF(zi, 'stand', hx, hz + 5.5, Math.PI, 1);
     addStation(zi, hx, hz, 16, 'Boiling water, raised on hooks of iron — it melts the face before it ever touches the lips.', 'Tirmidhi 2586');
+    // narrow pit (25:13-14): sunken ring, packed together, chained ankles
+    {
+      const nx = -15, nz = 85, ny = groundH(nx, nz);
+      const ring = new THREE.Mesh(linkGeo, ironMat);
+      ring.position.set(nx, ny + 0.6, nz); ring.rotation.x = Math.PI / 2; ring.scale.set(12, 12, 3);
+      P.add(ring);
+      SF(zi, 'sit', nx - 1.2, nz, 0.4, 1);
+      SF(zi, 'kneel', nx + 1.2, nz + 0.5, -0.5, 1);
+      SF(zi, 'sit', nx, nz - 1.4, Math.PI, 1);
+      SF(zi, 'kneel', nx + 0.4, nz + 1.5, Math.PI / 2, 1);
+      chainRun(P, nx - 1.2, ny + 0.4, nz, nx + 1.2, ny + 0.4, nz + 0.5, 5);
+      chainRun(P, nx, ny + 0.4, nz - 1.4, nx + 0.4, ny + 0.4, nz + 1.5, 5);
+      addStation(zi, nx, nz, 15, 'Bound together in the narrow dark. You will beg for an end, and beg again.', 'Quran 25:13-14');
+    }
+    // walls of craving (Bukhari 6487): gold glows ringed around one soul
+    {
+      const wx = 15, wz = -75, wy = groundH(wx, wz);
+      SF(zi, 'stand', wx, wz, 0, 1);
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2;
+        const s = new THREE.Sprite(goldSpriteMat);
+        s.position.set(wx + Math.cos(a) * 6, wy + 1.5, wz + Math.sin(a) * 6);
+        s.scale.set(2.2, 2.2, 1);
+        P.add(s);
+        flames.push({ sp: s, seed: Math.random() * 10, bx: 2.2, by: 2.2 });
+      }
+      addStation(zi, wx, wz, 15, 'Every craving you obeyed is here. They are standing around you like walls.', 'Bukhari 6487');
+    }
   }
   // ——— DEPTH III — Fields of Chains ———
   { const zi = 2, P = zoneProps[zi];
@@ -589,6 +645,31 @@ function buildStations() {
     }
     SF(zi, 'sit', mx, mz, 0, 1);
     addStation(zi, mx, mz, 17, 'Maces of iron. Every time they try to escape the anguish, they are struck back down.', 'Quran 22:21-22');
+    // yoked and dragged (40:71-72): scalding pool, fire pool, churned path
+    {
+      const yx = -80, yz = -10, yy = groundH(yx, yz);
+      poolDisc(P, yx - 6, yz, 3, frostMat);
+      riser(P, yx - 6, yy + 1, yz, 6, 0.7, 2.4, fogTex, 0.45);
+      poolDisc(P, yx + 6, yz, 3, lavaMat);
+      flame(P, yx + 6, yy + 1, yz, 4, 3, pitTex, 0.7);
+      const path = poolDisc(P, yx, yz, 1, thornMat);
+      path.scale.set(7, 2, 1);
+      SF(zi, 'chained', yx, yz + 0.5, Math.PI / 2, 1);
+      chainRun(P, yx, yy + 1.8, yz + 0.5, yx - 6, yy + 0.5, yz, 7);
+      addStation(zi, yx, yz, 16, 'Yoked by the neck. Dragged through the scalding, then delivered to the flame. Again.', 'Quran 40:71-72');
+    }
+    // dragged closer (Muslim 2842): colossus in fog, tethered glows — no figure
+    {
+      const tx = 90, tz = -25;
+      const bx = 135, bz = -38, by = groundH(bx, bz);
+      box(P, ironMat, bx, by + 12, bz, 22, 24, 22);
+      for (let i = 0; i < 10; i++) {
+        const t = (i + 1) / 11;
+        const gx = tx + (bx - tx) * t, gz = tz + (bz - tz) * t;
+        flame(P, gx, groundH(gx, gz) + 2 + t * 10, gz, 0.9, 5, emberTex, 0.35);
+      }
+      addStation(zi, tx, tz, 16, 'Listen. That sound is Hell itself, dragged closer by more hands than stars.', 'Muslim 2842');
+    }
   }
   // ——— DEPTH IV — City of Faces ———
   { const zi = 3, P = zoneProps[zi];
@@ -602,6 +683,30 @@ function buildStations() {
     for (let i = 0; i < 6; i++) flame(P, -108 + i * 2.4, groundH(-105, 25) + 3.4, 25, 3.4, 7.5, pitTex);
     SF(zi, 'kneel', -105, 20.5, Math.PI, 1);
     addStation(zi, -105, 25, 16, 'The Day their faces are turned about in the Fire — wishing, too late, that they had obeyed.', 'Quran 33:66');
+    // branded treasure (9:34-35): dull gold plinth that knows your name
+    {
+      const gx = 20, gz = 110, gy = groundH(gx, gz);
+      box(P, goldMat, gx, gy + 0.5, gz, 3, 1, 2);
+      box(P, goldMat, gx, gy + 1.4, gz, 2.2, 0.8, 1.6);
+      box(P, goldMat, gx, gy + 2.1, gz, 1.4, 0.6, 1);
+      pulse(goldMat, 1.3, 0.6, 2.2);
+      SF(zi, 'stand', gx + 3.2, gz + 1, -Math.PI / 2, 1);
+      flame(P, gx + 3.2, groundH(gx + 3.2, gz + 1) + 2.0, gz + 1, 1.2, 1.2, pitTex);
+      flame(P, gx + 3.2, groundH(gx + 3.2, gz + 1) + 1.2, gz + 2.2, 1.0, 1.0, pitTex);
+      flame(P, gx + 3.2, groundH(gx + 3.2, gz + 1) + 1.2, gz - 0.2, 1.0, 1.0, pitTex);
+      addStation(zi, gx, gz, 15, 'Count it now. Your treasure is hot, and it knows your name.', 'Quran 9:34-35');
+    }
+    // dragged on faces (54:48): ember wake, three bowed ones pulled forward
+    {
+      const ex = -20, ez = -110, ey = groundH(ex, ez);
+      for (let i = 0; i < 5; i++) flame(P, ex + i * 3, groundH(ex + i * 3, ez) + 0.5, ez, 1.4, 1.4, emberTex, 0.7);
+      SF(zi, 'kneel', ex, ez + 1, Math.PI / 2, 1);
+      SF(zi, 'kneel', ex + 6, ez + 1, Math.PI / 2, 1);
+      SF(zi, 'kneel', ex + 12, ez + 1, Math.PI / 2, 1);
+      chainRun(P, ex, ey + 0.8, ez + 1, ex + 6, ey + 0.8, ez + 1, 4);
+      chainRun(P, ex + 6, ey + 0.8, ez + 1, ex + 12, ey + 0.8, ez + 1, 4);
+      addStation(zi, ex + 6, ez, 15, 'Face down through the embers. This is the touch you denied.', 'Quran 54:48');
+    }
   }
   // ——— DEPTH V — Sea of Fire ———
   { const zi = 4, P = zoneProps[zi];
@@ -622,6 +727,30 @@ function buildStations() {
     pulse(streamMat, 2.6, 0.9, 3.2);
     SF(zi, 'headback', qx, qz, 0, 1);
     addStation(zi, qx, qz, 16, 'Seize him, drag him to the middle of the Fire — then pour boiling water over his head. Taste!', 'Quran 44:47-49');
+    // pacing between boil and blaze (55:44): two pools, worn path, two pacers
+    {
+      const vx = 95, vz = 45, vy = groundH(vx, vz);
+      poolDisc(P, vx - 12, vz, 4, lavaMat);
+      flame(P, vx - 12, groundH(vx - 12, vz) + 1, vz, 4, 3, pitTex, 0.7);
+      poolDisc(P, vx + 13, vz, 4, frostMat);
+      riser(P, vx + 13, groundH(vx + 13, vz) + 1, vz, 7, 0.8, 2.6, fogTex, 0.45);
+      const walk = poolDisc(P, vx, vz, 1, thornMat);
+      walk.scale.set(13, 1.8, 1);
+      riser(P, vx, vy + 1, vz, 7, 1.0, 2.6, emberTex, 0.5);
+      SF(zi, 'walk', vx - 3, vz, Math.PI / 2, 1);
+      SF(zi, 'walk', vx + 3, vz, -Math.PI / 2, 1);
+      addStation(zi, vx, vz, 16, 'Walk to the water. It is boiling. Walk back to the fire. Walk again.', 'Quran 55:44');
+    }
+    // enlarged for feeling (Muslim 2851): one colossus half-sunk in fire
+    {
+      const mx2 = -110, mz2 = -45, my2 = groundH(mx2, mz2);
+      poolDisc(P, mx2, mz2, 8, lavaMat);
+      riser(P, mx2 - 3, my2 + 1, mz2, 8, 1.2, 3, emberTex);
+      riser(P, mx2 + 3, my2 + 1, mz2, 8, 1.0, 3.2, emberTex);
+      SF(zi, 'kneel', mx2, mz2, 0, 3.6, -0.8);
+      SF(zi, 'stand', mx2 + 8.5, mz2 + 1, -Math.PI / 2, 1);
+      addStation(zi, mx2, mz2, 16, 'You are made larger here, so that nothing misses you and nothing fades.', 'Muslim 2851');
+    }
   }
   // ——— DEPTH VI — Mirror Abyss ———
   { const zi = 5, P = zoneProps[zi];
@@ -648,6 +777,31 @@ function buildStations() {
     flame(P, -115, groundH(-115, -75) + 1.2, -75, 9, 2.6, eyeTex, 0.28);
     SF(zi, 'shiver', -115, -75, 0.8, 1);
     addStation(zi, -115, -75, 16, 'And a cold that burns worse than fire — bones cracking in the frost of Hell, begging for the flames again.', 'Bukhari & Muslim');
+    // canopy of fire (39:16): ember ceiling over black water
+    {
+      const cx2 = 0, cz2 = 120, cy2 = groundH(cx2, cz2);
+      poolDisc(P, cx2, cz2, 10, darkWaterMat);
+      for (let i = 0; i < 10; i++) {
+        const ox = ((i * 37) % 20) - 10, oz = ((i * 53) % 20) - 10;
+        flame(P, cx2 + ox, cy2 + 22 + (i % 4) * 1.5, cz2 + oz, 1.5, 1.5, emberTex, 0.5);
+      }
+      SF(zi, 'stand', cx2, cz2, 0, 0.9);
+      addStation(zi, cx2, cz2, 16, 'Look up. Look down. The fire has closed above you and below.', 'Quran 39:16');
+    }
+    // false shade (77:30-33): three leaning planes, no coolness — never any camel shape
+    {
+      const dx = 10, dz = -120, dy = groundH(dx, dz);
+      const p1 = box(P, ironMat, dx - 2, dy + 2, dz, 4, 0.3, 4);
+      p1.rotation.z = 0.28;
+      const p2 = box(P, ironMat, dx + 2, dy + 2, dz, 4, 0.3, 4);
+      p2.rotation.z = -0.3;
+      const p3 = box(P, ironMat, dx, dy + 3.2, dz, 4.4, 0.3, 3.6);
+      p3.rotation.x = 0.12;
+      SF(zi, 'kneel', dx, dz, 0, 1);
+      flame(P, dx, dy + 2, dz, 3, 4, pitTex, 0.6);
+      for (let i = 0; i < 4; i++) flame(P, dx + (i - 1.5) * 3, dy + 10 + (i % 2), dz + (i - 1.5) * 2, 3, 3, emberTex, 0.4);
+      addStation(zi, dx, dz, 16, 'That shade will not cool you. Watch the sky. The sparks rise like towers.', 'Quran 77:30-33');
+    }
   }
   // ——— DEPTH VII — The Deepest ———
   { const zi = 6, P = zoneProps[zi];
@@ -670,6 +824,31 @@ function buildStations() {
     const rxf = SF(zi, 'stand', 55, 140, -0.6, 1.05);
     flame(P, rxf.g.position.x, rxf.g.position.y + 1.4, rxf.g.position.z, 4.5, 6.5, pitTex, 0.75);
     addStation(zi, 55, 140, 16, 'Every time their skins burn through, they are given new skins — so the pain never dulls. Forever.', 'Quran 4:56');
+    // the lowest pit (4:145): concentric rings, seated apart, bowed — darkest dressing
+    {
+      const lx = -80, lz = 20, ly = groundH(lx, lz);
+      const tiers: [number, number][] = [[18, 0.5], [12, 0.9], [6, 1.3]];
+      for (const [sc, yy] of tiers) {
+        const r = new THREE.Mesh(linkGeo, ironMat);
+        r.position.set(lx, ly + yy, lz); r.rotation.x = Math.PI / 2; r.scale.set(sc, sc, 2.5);
+        P.add(r);
+      }
+      SF(zi, 'sit', lx - 1.5, lz, 0.3, 1);
+      SF(zi, 'sit', lx + 1.5, lz + 0.8, -0.4, 1);
+      SF(zi, 'sit', lx + 0.2, lz - 1.6, Math.PI, 1);
+      addStation(zi, lx, lz, 16, 'The lowest place is for the two-faced. No mask works this far down.', 'Quran 4:145');
+    }
+    // the asking void (50:30): vast emptiness with a faint red rim — no figure, nothing else staged
+    {
+      const ex2 = 90, ez2 = -20, ey2 = groundH(ex2, ez2);
+      const voidDisc = poolDisc(P, ex2, ez2, 14, darkWaterMat);
+      voidDisc.scale.set(18, 10, 1);
+      const rim = new THREE.Mesh(linkGeo, rimMat);
+      rim.position.set(ex2, ey2 + 0.3, ez2); rim.rotation.x = Math.PI / 2; rim.scale.set(50, 28, 1.5);
+      P.add(rim);
+      pulse(rimMat, 0.6, 0.4, 1.2);
+      addStation(zi, ex2, ez2, 18, 'It asked if it was full. It answered: bring me more.', 'Quran 50:30');
+    }
   }
 
   pulse(emberHotMat, 2.0, 0.7, 2.0);
@@ -692,6 +871,7 @@ function buildWanderer() {
 }
 
 let fxT = 0;
+let stationFireT = -1000; // last station trigger time — the chained one echoes it
 function thud() {
   if (!actx) return;
   try {
@@ -746,8 +926,8 @@ function updateFigures(dt: number) {
       s.armR.rotation.x = -2.7 + Math.sin(t * 1.1 + sd) * 0.16;
       s.torso.rotation.x = Math.sin(t * 1.1 + sd) * 0.05;
     } else if (s.mode === 'sit') {
-      const sh = Math.pow(Math.max(0, Math.sin(t * 0.45 + sd)), 24);
-      s.torso.rotation.z = sh * Math.sin(t * 28) * 0.12;
+      const sh = Math.pow(Math.max(0, Math.sin(t * (0.4 + (sd % 1) * 0.25) + sd * 3.1)), 24);
+      s.torso.rotation.z = sh * Math.sin(t * (26 + (sd % 5)) + sd * 9) * 0.12;
       s.head.rotation.x = 0.55 + sh * 0.1;
     } else if (s.mode === 'shiver') {
       s.torso.position.x = Math.sin(t * 23 + sd) * 0.02;
@@ -760,6 +940,24 @@ function updateFigures(dt: number) {
     // near you, their torment visibly redoubles — twist harder the closer you stand
     const dc = Math.hypot(camera.position.x - s.g.position.x, camera.position.z - s.g.position.z);
     s.torso.rotation.y = Math.sin(t * 7 + sd) * 0.09 * Math.max(0, 1 - dc / 25);
+    // chained figures fight their chains when you near — bigger struggle, no new meshes
+    if (s.mode === 'chained') {
+      const prox = Math.max(0, 1 - dc / 14);
+      const fight = Math.sin(t * 9 + sd * 2) * 0.22 * prox;
+      s.armL.rotation.x += fight;
+      s.armR.rotation.x -= fight;
+      s.torso.rotation.z += Math.sin(t * 7.3 + sd) * 0.1 * prox;
+    }
+    // station victims turn their blank heads toward you within 14m — yaw only, poses intact
+    if (dc < 14) {
+      const hx = camera.position.x - s.g.position.x, hz = camera.position.z - s.g.position.z;
+      let want = Math.atan2(hx, hz) - s.g.rotation.y;
+      want = Math.atan2(Math.sin(want), Math.cos(want));
+      const tracked = THREE.MathUtils.clamp(want, -0.7, 0.7) * Math.max(0, 1 - dc / 14);
+      s.head.rotation.y += (tracked - s.head.rotation.y) * Math.min(1, dt * 3);
+    } else {
+      s.head.rotation.y += (0 - s.head.rotation.y) * Math.min(1, dt * 2);
+    }
   }
   if (wanderer) {
     wanderAngle += dt * 0.028;
@@ -776,6 +974,7 @@ function updateFigures(dt: number) {
 
 function triggerStation(st: Station) {
   st.last = fxT;
+  stationFireT = fxT;
   flash(0.6);
   screamBurst();
   showSubtitle('\u201C' + st.line + '\u201D  — ' + st.ref, 6.5);
@@ -812,6 +1011,10 @@ const LASH_LINES: { line: string; ref: string }[] = [
   { line: 'Beg for water, and receive molten brass.', ref: 'Quran 18:29' },
   { line: 'A thousand years of screaming — and not one cry answered.', ref: 'Tirmidhi 2586' },
   { line: 'Every escape is struck back down.', ref: 'Quran 22:22' },
+  { line: 'No friend today. No food but the filth of wounds.', ref: 'Quran 69:35-36' },
+  { line: 'No death will finish you. No pain will ever grow lighter.', ref: 'Quran 35:36' },
+  { line: 'It does not quench. It cuts you open from the inside.', ref: 'Quran 47:15' },
+  { line: 'You walked tall. Now walk small, with the small, to the prison called Bulas.', ref: 'Tirmidhi 2492' },
 ];
 
 let companion: Shade | null = null;
@@ -823,6 +1026,7 @@ let nextStumble = 9;
 let nextLash = 14;
 let lashIdx = 0;
 let fallDir = 1;
+let lashBend = false; // true while the current lash is one of the 4 new doubling-over lines
 
 function whimper() {
   if (!actx) return;
@@ -884,16 +1088,36 @@ function updateCompanion(dt: number) {
     // collapsed in the dirt, then struggles back up — he is never allowed rest
     c.g.rotation.z += (fallDir * 1.35 - c.g.rotation.z) * Math.min(1, dt * 5);
     c.g.position.y += (c.baseY + 0.25 - c.g.position.y) * Math.min(1, dt * 5);
-    // one arm reaches toward you as he falls
+    c.torso.rotation.x = 0; c.torso.rotation.z = 0;
+    // pleading: one arm reaches toward you as he falls, blank face turns to you
     c.armR.rotation.x = -1.3 + Math.sin(fxT * 3) * 0.15;
     c.head.rotation.x = 0.2;
-    if (compT > 2.4) { compMode = 'trudge'; compT = 0; }
+    {
+      const hx = camera.position.x - c.g.position.x, hz = camera.position.z - c.g.position.z;
+      let want = Math.atan2(hx, hz) - c.g.rotation.y;
+      want = Math.atan2(Math.sin(want), Math.cos(want));
+      const tracked = THREE.MathUtils.clamp(want, -0.75, 0.75);
+      c.head.rotation.y += (tracked - c.head.rotation.y) * Math.min(1, dt * 4);
+      c.armR.rotation.z += (THREE.MathUtils.clamp(-want, -0.5, 0.5) - c.armR.rotation.z) * Math.min(1, dt * 4);
+    }
+    if (compT > 2.4) { compMode = 'trudge'; compT = 0; c.armR.rotation.z = 0; }
   } else if (compMode === 'lashed') {
-    // struck — convulsing under the striker
-    c.g.position.x += (Math.random() - 0.5) * 0.22;
-    c.g.position.z += (Math.random() - 0.5) * 0.22;
-    c.torso.rotation.y = Math.sin(fxT * 42) * 0.45;
-    c.head.rotation.x = -0.6;
+    // struck — convulsing under the striker, synced to screamVoice() at fire time
+    const spike = compT < 0.3 ? 2 : 1; // scream-sync: convulsion peaks on the scream's first 0.3s
+    c.g.position.x += (Math.random() - 0.5) * 0.22 * spike;
+    c.g.position.z += (Math.random() - 0.5) * 0.22 * spike;
+    c.torso.rotation.y = Math.sin(fxT * 42) * 0.45 * spike;
+    c.torso.rotation.z = 0;
+    // new-lines staging: abstract double-over only — no anatomy, no liquid
+    c.torso.rotation.x = lashBend ? 0.7 + Math.sin(fxT * 18) * 0.08 * spike : 0;
+    c.head.rotation.x = lashBend ? 0.5 : -0.6;
+    {
+      const hx = camera.position.x - c.g.position.x, hz = camera.position.z - c.g.position.z;
+      let want = Math.atan2(hx, hz) - c.g.rotation.y;
+      want = Math.atan2(Math.sin(want), Math.cos(want));
+      const tracked = THREE.MathUtils.clamp(want, -0.75, 0.75);
+      c.head.rotation.y += (tracked - c.head.rotation.y) * Math.min(1, dt * 4);
+    }
     if (striker) {
       const by = c.g.position.y;
       striker.position.x = c.g.position.x; striker.position.z = c.g.position.z;
@@ -901,26 +1125,43 @@ function updateCompanion(dt: number) {
         : compT < 0.3 ? by + 1.4
         : by + 1.4 + Math.min(1, (compT - 0.3) / 0.8) * 5.1 + Math.sin(fxT * 1.3) * 0.25;
     }
-    if (compT > 1.1) { compMode = 'trudge'; compT = 0; c.torso.rotation.y = 0; }
+    if (compT > 1.1) { compMode = 'trudge'; compT = 0; c.torso.rotation.y = 0; c.torso.rotation.x = 0; lashBend = false; }
   } else {
     // trudge: hurries when left behind, trudges head-hung when near
-    const speed = d > 14 ? 10.5 : d > 8 ? 6 : 3.4;
+    // gate awareness: he knows what descent means — slows, faces it, trembles
+    const gateD = Math.hypot(c.g.position.x - gateGroup.position.x, c.g.position.z - gateGroup.position.z);
+    const gateNear = gateGroup.visible && gateD < 25;
+    const dragged = d > 14; // chain taut: he is hauled back, scrambling
+    let speed: number = dragged ? 10.5 : d > 8 ? 6 : 3.4;
+    if (gateNear) speed *= 0.35;
     if (d > 0.5) {
       c.g.position.x += (dx / d) * speed * dt;
       c.g.position.z += (dz / d) * speed * dt;
     }
-    c.g.position.y = groundH(c.g.position.x, c.g.position.z) + Math.abs(Math.cos(fxT * 3.4)) * 0.04;
+    const freq = dragged ? 9 : 3 + speed * 0.35;
+    const amp = dragged ? 0.85 : 0.25 + speed * 0.035;
+    c.g.position.y = groundH(c.g.position.x, c.g.position.z) + Math.abs(Math.cos(fxT * freq)) * (dragged ? 0.09 : 0.04);
     if (d > 0.6) {
-      const targetRy = Math.atan2(dx, dz);
+      let targetRy = Math.atan2(dx, dz);
+      if (gateNear) targetRy = Math.atan2(gateGroup.position.x - c.g.position.x, gateGroup.position.z - c.g.position.z);
       let dr = targetRy - c.g.rotation.y;
       dr = Math.atan2(Math.sin(dr), Math.cos(dr));
       c.g.rotation.y += dr * Math.min(1, dt * 6);
     }
     c.g.rotation.z += (0 - c.g.rotation.z) * Math.min(1, dt * 4);
-    const sw = Math.sin(fxT * (3 + speed * 0.35));
-    const amp = 0.25 + speed * 0.035;
+    const sw = Math.sin(fxT * freq);
     c.legL.rotation.x = sw * amp * 1.6; c.legR.rotation.x = -sw * amp * 1.6;
     c.armL.rotation.x = -sw * amp; c.armR.rotation.x = sw * amp;
+    c.armR.rotation.z += (0 - c.armR.rotation.z) * Math.min(1, dt * 4);
+    c.torso.rotation.x = dragged ? 0.3 : 0; // hauled forward lean
+    c.torso.rotation.z = 0;
+    if (gateNear) {
+      c.torso.rotation.z = Math.sin(fxT * 30) * 0.1;
+      c.torso.rotation.x += 0.15 + Math.sin(fxT * 26) * 0.05;
+      c.head.rotation.z = Math.sin(fxT * 24) * 0.06;
+    } else {
+      c.head.rotation.z += (0 - c.head.rotation.z) * Math.min(1, dt * 4);
+    }
     c.head.rotation.x = 0.45; // hung — always
     // ...until he feels you near: his blank face turns toward you
     {
@@ -931,7 +1172,7 @@ function updateCompanion(dt: number) {
       const tracked = THREE.MathUtils.clamp(want, -0.75, 0.75) * Math.max(0, 1 - hd / 16);
       c.head.rotation.y += (tracked - c.head.rotation.y) * Math.min(1, dt * 3);
     }
-    if (d > 14 && Math.random() < dt * 2) rattle(); // chains scream as he sprints
+    if (dragged && Math.random() < dt * 2) rattle(); // chains scream as he is hauled back
     if (striker) striker.position.set(c.g.position.x, c.g.position.y + 6.5 + Math.sin(fxT * 1.3) * 0.25, c.g.position.z);
     nextStumble -= dt;
     if (nextStumble <= 0) {
@@ -941,13 +1182,20 @@ function updateCompanion(dt: number) {
       sanity = Math.max(0, sanity - 2);
     }
   }
+  // station empathy: any station's torment echoes in him for ~3s
+  if (fxT - stationFireT < 3) {
+    c.torso.rotation.z += Math.sin(fxT * 30) * 0.09;
+    c.head.rotation.x += Math.abs(Math.sin(fxT * 24)) * 0.08;
+  }
   // the lash finds him wherever he is, on its own timer
   if (compMode === 'trudge') {
     nextLash -= dt;
     if (nextLash <= 0) {
       compMode = 'lashed'; compT = 0;
       nextLash = 16 + Math.random() * 10;
-      const L = LASH_LINES[lashIdx % LASH_LINES.length]; lashIdx++;
+      const li = lashIdx % LASH_LINES.length;
+      const L = LASH_LINES[li]; lashIdx++;
+      lashBend = li >= 6; // the 4 new lines: abstract double-over staging only
       flash(0.3); screamVoice(); thud();
       showSubtitle('\u201C' + L.line + '\u201D  — ' + L.ref, 5);
       speak(L.line);
@@ -957,11 +1205,13 @@ function updateCompanion(dt: number) {
   // the chain binding him to you — sagging between you both, always
   const ax = c.g.position.x, ay = c.g.position.y + 1.3, az = c.g.position.z;
   const bx = camera.position.x, by = groundH(camera.position.x, camera.position.z) + 0.5, bz = camera.position.z;
+  const taut = d > 14; // dragged: chain pulled straight; else sagging between you both
+  const sag = taut ? 0.05 : 0.9;
   for (let i = 0; i < compChain.length; i++) {
     const t = i / (compChain.length - 1);
     const m = compChain[i];
-    m.position.set(ax + (bx - ax) * t, ay + (by - ay) * t - Math.sin(t * Math.PI) * 0.9, az + (bz - az) * t);
-    m.rotation.y = (i % 2) * Math.PI / 2 + Math.sin(fxT * 0.8 + i) * 0.1;
+    m.position.set(ax + (bx - ax) * t, ay + (by - ay) * t - Math.sin(t * Math.PI) * sag, az + (bz - az) * t);
+    m.rotation.y = (i % 2) * Math.PI / 2 + (taut ? 0 : Math.sin(fxT * 0.8 + i) * 0.1);
   }
   if (striker && compMode !== 'lashed') {
     striker.position.x += (c.g.position.x - striker.position.x) * Math.min(1, dt * 5);
@@ -1121,6 +1371,13 @@ const ZONE_VOICE = [
   'Eat from the tree of Zaqqum. It boils in the belly like molten metal. And beside it, a cold that cracks the bones.',
   'They will call: O Malik, ask your Lord to end us. And after a thousand years of silence, the answer comes: You will remain.',
 ];
+
+// gate-whispers: warned once per depth as you near the descent
+const GATE_LINES: { line: string; ref: string }[] = [
+  { line: 'Seven gates. Each gate has its portion named. One of them has yours.', ref: 'Quran 15:44' },
+  { line: 'Every crowd thrown in is asked: did no warner ever come to you? You were warned.', ref: 'Quran 67:8' },
+];
+let gateSaidZone = -1;
 
 // ---------------------------------------------------------------- voices of the damned
 // Procedural source-filter vocal synthesis: sawtooth glottis through two
@@ -1443,6 +1700,7 @@ function setZone(i: number) {
   zoneProps.forEach((g, i) => (g.visible = i === zoneIdx));
   zoneFigs.forEach((arr, i) => arr.forEach((f) => (f.g.visible = i === zoneIdx)));
   placeCompanionAhead(); // he descends with you — the chain does not break
+  gateSaidZone = -1;
   speak(ZONE_VOICE[zoneIdx]);
   // reset player to spawn, keep meters (suffering accumulates)
   camera.position.set(spawnPos.x, 1.7, spawnPos.z);
@@ -1738,6 +1996,13 @@ function updatePlayer(dt: number) {
     }
   }
 
+  // gate-whispers: the descent warns you as you near (once per depth)
+  if (gateGroup.visible && gateDist < 24 && gateSaidZone !== zoneIdx) {
+    gateSaidZone = zoneIdx;
+    const G = GATE_LINES[zoneIdx % 2];
+    showSubtitle('\u201C' + G.line + '\u201D  — ' + G.ref, 5);
+    speak(G.line);
+  }
   // gate = descend
   if (gateGroup.visible && gateDist < 4.5) descend();
 
