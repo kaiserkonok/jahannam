@@ -11,6 +11,16 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font
   background: radial-gradient(ellipse at 50% 120%, rgba(255,60,0,0.9), transparent 60%); animation: heatpulse 3s ease-in-out infinite; }
 @keyframes heatpulse { 0%,100% { opacity: 0.08; } 50% { opacity: 0.22; } }
 #flash { position: fixed; inset: 0; pointer-events: none; z-index: 6; background: rgba(180,0,0,0.55); opacity: 0; transition: opacity 0.15s; }
+/* animated film grain — the footage look: Hell recorded, not rendered */
+#grain { position: fixed; inset: -120px; pointer-events: none; z-index: 8; opacity: 0.09;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.7'/%3E%3C/svg%3E");
+  animation: grain 0.45s steps(4) infinite; }
+@keyframes grain {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(-40px, 30px); }
+  50% { transform: translate(30px, -45px); }
+  75% { transform: translate(-25px, -20px); }
+  100% { transform: translate(35px, 40px); } }
 #fade { position: fixed; inset: 0; background: #000; z-index: 20; pointer-events: none; opacity: 1; transition: opacity 1.6s ease; }
 
 #crosshair { position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%); color: rgba(255,200,150,0.5); z-index: 7; font-size: 20px; }

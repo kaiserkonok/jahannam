@@ -153,12 +153,15 @@ const skyMat = new THREE.ShaderMaterial({
   uniforms: {
     top: { value: new THREE.Color(ZONES[0].skyTop) },
     bottom: { value: new THREE.Color(ZONES[0].skyBottom) },
+    time: { value: 0 },
   },
   vertexShader: `varying vec3 vP; void main(){ vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
-  fragmentShader: `uniform vec3 top; uniform vec3 bottom; varying vec3 vP;
+  fragmentShader: `uniform vec3 top; uniform vec3 bottom; uniform float time; varying vec3 vP;
     void main(){ float h = normalize(vP).y*0.5+0.5; vec3 c = mix(bottom, top, pow(max(h,0.0),0.6));
-    // burning horizon band
-    c += vec3(0.5,0.08,0.0) * pow(1.0-abs(normalize(vP).y), 6.0);
+    // burning horizon band that churns and breathes — the sky is alive
+    float fl = 0.8 + 0.11*sin(time*2.3) + 0.09*sin(time*5.7+1.7);
+    c += vec3(0.5,0.08,0.0) * pow(1.0-abs(normalize(vP).y), 6.0) * fl;
+    c *= 0.96 + 0.04*sin(time*0.9);
     gl_FragColor = vec4(c,1.0); }`,
 });
 scene.add(new THREE.Mesh(new THREE.SphereGeometry(500, 24, 16), skyMat));
@@ -415,6 +418,72 @@ function flame(parent: THREE.Object3D, x: number, y: number, z: number, sx: numb
   flames.push({ sp, seed: Math.random() * 10, bx: sx, by: sy });
 }
 const slammers: { mesh: THREE.Mesh; baseY: number; seed: number; prev: number }[] = [];
+const flowTexs: { tex: THREE.Texture; sx: number; sy: number }[] = [];
+
+// ---------------------------------------------------------------- atmosphere of Hell
+// ash that never stops falling, fog banks that drift, fire on the horizon
+const ashTex = glowTexture('rgba(190,170,160,0.85)', 'rgba(190,170,160,0)');
+const fogTex = glowTexture('rgba(160,140,130,0.4)', 'rgba(160,140,130,0)');
+const ASH_N = 380;
+let ashGeo: THREE.BufferGeometry | null = null;
+const ashVel = new Float32Array(ASH_N);
+interface FogBank { sp: THREE.Sprite; a: number; r: number; y: number; spd: number }
+const fogBanks: FogBank[] = [];
+
+function buildAtmosphere() {
+  ashGeo = new THREE.BufferGeometry();
+  const arr = new Float32Array(ASH_N * 3);
+  for (let i = 0; i < ASH_N; i++) {
+    arr[i * 3] = (Math.random() - 0.5) * 200;
+    arr[i * 3 + 1] = Math.random() * 40;
+    arr[i * 3 + 2] = (Math.random() - 0.5) * 200;
+    ashVel[i] = 0.5 + Math.random() * 1.4;
+  }
+  ashGeo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+  const m = new THREE.PointsMaterial({ map: ashTex, size: 0.4, transparent: true, opacity: 0.5, depthWrite: false, color: 0xbb9988 });
+  scene.add(new THREE.Points(ashGeo, m));
+  // low fog banks circling far out — Hell extends past what you can see
+  for (let i = 0; i < 8; i++) {
+    const mat = new THREE.SpriteMaterial({ map: fogTex, transparent: true, depthWrite: false, opacity: 0.05 + Math.random() * 0.03, fog: false });
+    const sp = new THREE.Sprite(mat);
+    const sx = 70 + Math.random() * 40;
+    sp.scale.set(sx, 22 + Math.random() * 8, 1);
+    scene.add(sp);
+    fogBanks.push({ sp, a: (i / 8) * Math.PI * 2 + Math.random(), r: 120 + Math.random() * 60, y: 8 + Math.random() * 10, spd: 0.004 + Math.random() * 0.006 });
+  }
+  // pillars of fire on the horizon — the torment goes on without you
+  for (let i = 0; i < 6; i++) {
+    const mat = new THREE.SpriteMaterial({ map: emberTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.35 + Math.random() * 0.15, fog: false });
+    const sp = new THREE.Sprite(mat);
+    const a = Math.random() * Math.PI * 2;
+    sp.position.set(Math.cos(a) * 330, 45, Math.sin(a) * 330);
+    sp.scale.set(10 + Math.random() * 6, 120 + Math.random() * 40, 1);
+    scene.add(sp);
+  }
+}
+
+function updateAtmosphere(dt: number) {
+  void dt;
+  skyMat.uniforms.time.value = fxT;
+  for (const f of flowTexs) { f.tex.offset.x += f.sx * dt; f.tex.offset.y += f.sy * dt; }
+  if (ashGeo) {
+    const arr = ashGeo.attributes.position.array as Float32Array;
+    for (let i = 0; i < ASH_N; i++) {
+      arr[i * 3 + 1] -= ashVel[i] * dt * 1.2;
+      arr[i * 3] += Math.sin(fxT * 0.5 + i) * dt * 0.8;
+      if (arr[i * 3 + 1] < 0 || Math.abs(arr[i * 3] - camera.position.x) > 100 || Math.abs(arr[i * 3 + 2] - camera.position.z) > 100) {
+        arr[i * 3] = camera.position.x + (Math.random() - 0.5) * 180;
+        arr[i * 3 + 1] = 34 + Math.random() * 6;
+        arr[i * 3 + 2] = camera.position.z + (Math.random() - 0.5) * 180;
+      }
+    }
+    ashGeo.attributes.position.needsUpdate = true;
+  }
+  for (const b of fogBanks) {
+    b.a += dt * b.spd;
+    b.sp.position.set(Math.cos(b.a) * b.r, b.y + Math.sin(fxT * 0.2 + b.r) * 1.5, Math.sin(b.a) * b.r);
+  }
+}
 
 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 const postGeo = new THREE.BoxGeometry(0.8, 1, 0.8);
@@ -606,6 +675,13 @@ function buildStations() {
   pulse(emberHotMat, 2.0, 0.7, 2.0);
   pulse(brassMat, 1.8, 0.6, 2.4);
   pulse(lavaMat, 1.6, 0.55, 1.7);
+  // molten surfaces that visibly FLOW — scrolling emissive crack-maps
+  const lavaFlow = crackTex.clone(); lavaFlow.needsUpdate = true;
+  lavaMat.emissiveMap = lavaFlow; lavaMat.emissive.setHex(0xff5a00);
+  flowTexs.push({ tex: lavaFlow, sx: 0.013, sy: -0.05 });
+  const brassFlow = crackTex.clone(); brassFlow.needsUpdate = true;
+  brassMat.emissiveMap = brassFlow; brassMat.emissive.setHex(0xff8a00);
+  flowTexs.push({ tex: brassFlow, sx: 0.04, sy: -0.09 });
 }
 
 // the one who walks: a silhouette pacing its circle, never stopping, never arriving
@@ -808,6 +884,9 @@ function updateCompanion(dt: number) {
     // collapsed in the dirt, then struggles back up — he is never allowed rest
     c.g.rotation.z += (fallDir * 1.35 - c.g.rotation.z) * Math.min(1, dt * 5);
     c.g.position.y += (c.baseY + 0.25 - c.g.position.y) * Math.min(1, dt * 5);
+    // one arm reaches toward you as he falls
+    c.armR.rotation.x = -1.3 + Math.sin(fxT * 3) * 0.15;
+    c.head.rotation.x = 0.2;
     if (compT > 2.4) { compMode = 'trudge'; compT = 0; }
   } else if (compMode === 'lashed') {
     // struck — convulsing under the striker
@@ -843,12 +922,22 @@ function updateCompanion(dt: number) {
     c.legL.rotation.x = sw * amp * 1.6; c.legR.rotation.x = -sw * amp * 1.6;
     c.armL.rotation.x = -sw * amp; c.armR.rotation.x = sw * amp;
     c.head.rotation.x = 0.45; // hung — always
+    // ...until he feels you near: his blank face turns toward you
+    {
+      const hx = camera.position.x - c.g.position.x, hz = camera.position.z - c.g.position.z;
+      const hd = Math.hypot(hx, hz);
+      let want = Math.atan2(hx, hz) - c.g.rotation.y;
+      want = Math.atan2(Math.sin(want), Math.cos(want));
+      const tracked = THREE.MathUtils.clamp(want, -0.75, 0.75) * Math.max(0, 1 - hd / 16);
+      c.head.rotation.y += (tracked - c.head.rotation.y) * Math.min(1, dt * 3);
+    }
+    if (d > 14 && Math.random() < dt * 2) rattle(); // chains scream as he sprints
     if (striker) striker.position.set(c.g.position.x, c.g.position.y + 6.5 + Math.sin(fxT * 1.3) * 0.25, c.g.position.z);
     nextStumble -= dt;
     if (nextStumble <= 0) {
       compMode = 'fallen'; compT = 0; fallDir = Math.random() < 0.5 ? -1 : 1;
       nextStumble = 8 + Math.random() * 9;
-      whimper();
+      whimper(); rattle();
       sanity = Math.max(0, sanity - 2);
     }
   }
@@ -859,7 +948,7 @@ function updateCompanion(dt: number) {
       compMode = 'lashed'; compT = 0;
       nextLash = 16 + Math.random() * 10;
       const L = LASH_LINES[lashIdx % LASH_LINES.length]; lashIdx++;
-      flash(0.3); screamBurst(); thud();
+      flash(0.3); screamVoice(); thud();
       showSubtitle('\u201C' + L.line + '\u201D  — ' + L.ref, 5);
       speak(L.line);
       sanity = Math.max(0, sanity - 3);
@@ -921,6 +1010,33 @@ function initAudio() {
   const bSrc = actx.createBufferSource(); bSrc.buffer = buf; bSrc.loop = true; bSrc.playbackRate.value = 0.3;
   const bFil = actx.createBiquadFilter(); bFil.type = 'lowpass'; bFil.frequency.value = 500;
   bSrc.connect(bFil); bFil.connect(breathGain); bSrc.start();
+
+  // ---- dread layers (research: dissonance + near-infrasound = unease) ----
+  sfxBus = actx.createGain(); sfxBus.gain.value = 0.9; sfxBus.connect(master);
+
+  // tritone against the 38Hz drone + a 19.5Hz near-infrasound weight
+  const tri = actx.createOscillator(); tri.type = 'sawtooth'; tri.frequency.value = 53.7;
+  const triF = actx.createBiquadFilter(); triF.type = 'lowpass'; triF.frequency.value = 130;
+  const triG = actx.createGain(); triG.gain.value = 0.035;
+  tri.connect(triF); triF.connect(triG); triG.connect(master); tri.start();
+  const sub = actx.createOscillator(); sub.type = 'sine'; sub.frequency.value = 19.5;
+  const subG = actx.createGain(); subG.gain.value = 0.05;
+  sub.connect(subG); subG.connect(master); sub.start();
+
+  // fire roar bed — gain follows flame proximity every frame
+  const rSrc = actx.createBufferSource(); rSrc.buffer = buf; rSrc.loop = true; rSrc.playbackRate.value = 0.5;
+  roarFilter = actx.createBiquadFilter(); roarFilter.type = 'lowpass'; roarFilter.frequency.value = 320;
+  roarGain = actx.createGain(); roarGain.gain.value = 0.0;
+  rSrc.connect(roarFilter); roarFilter.connect(roarGain); roarGain.connect(master); rSrc.start();
+
+  // the choir: one voice chained near you, four lost in the dark
+  compVoice = makeWail(250, 0, 0, true, 0.14, 0.09);
+  chorusVoices = [
+    makeWail(168, -60, 60, false, 0.075, 0.045),
+    makeWail(214, 70, -40, false, 0.075, 0.045),
+    makeWail(142, 0, 120, false, 0.075, 0.045),
+    makeWail(262, -110, -20, false, 0.075, 0.045),
+  ];
 }
 
 function screamBurst() {
@@ -978,6 +1094,194 @@ const ZONE_VOICE = [
   'Eat from the tree of Zaqqum. It boils in the belly like molten metal. And beside it, a cold that cracks the bones.',
   'They will call: O Malik, ask your Lord to end us. And after a thousand years of silence, the answer comes: You will remain.',
 ];
+
+// ---------------------------------------------------------------- voices of the damned
+// Procedural source-filter vocal synthesis: sawtooth glottis through two
+// vowel formants ("ah": ~750Hz + ~1220Hz), vibrato, pitch envelopes.
+// No samples — every wail below is synthesized live.
+let sfxBus: GainNode | null = null;
+let roarGain: GainNode | null = null;
+let roarFilter: BiquadFilterNode | null = null;
+interface WailVoice {
+  osc: OscillatorNode; gain: GainNode; pan: StereoPannerNode;
+  baseF: number; seed: number; wob: number; x: number; z: number;
+  followsCompanion: boolean; maxGain: number; falloff: number;
+}
+let compVoice: WailVoice | null = null;
+let chorusVoices: WailVoice[] = [];
+let screamCurve: Float32Array<ArrayBuffer> | null = null;
+let stepAcc = 0;
+let stepFlip = false;
+let hbT = 0.8;
+let roarNear = 1e9;
+
+function makeWail(baseF: number, x: number, z: number, follows: boolean, maxGain: number, falloff: number): WailVoice {
+  const a = actx!;
+  const osc = a.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = baseF;
+  const vib = a.createOscillator(); vib.frequency.value = 5.2 + Math.random() * 1.6;
+  const vibG = a.createGain(); vibG.gain.value = baseF * 0.06;
+  vib.connect(vibG); vibG.connect(osc.frequency); vib.start();
+  const f1 = a.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 750; f1.Q.value = 1.6;
+  const f2 = a.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 1220; f2.Q.value = 2.2;
+  const g2 = a.createGain(); g2.gain.value = 0.5;
+  const gain = a.createGain(); gain.gain.value = 0;
+  const pan = a.createStereoPanner();
+  osc.connect(f1); osc.connect(f2); f2.connect(g2); f1.connect(gain); g2.connect(gain);
+  gain.connect(pan); pan.connect(sfxBus!);
+  osc.start();
+  return { osc, gain, pan, baseF, seed: Math.random() * 10, wob: 0.45 + Math.random() * 0.5, x, z, followsCompanion: follows, maxGain, falloff };
+}
+
+// a near, human scream for the lash — pitch collapse + distortion, not a synth blip
+function screamVoice() {
+  if (!actx || !sfxBus) return;
+  try {
+    if (!screamCurve) {
+      screamCurve = new Float32Array(256);
+      for (let i = 0; i < 256; i++) { const x = (i / 128) - 1; screamCurve[i] = Math.tanh(2.5 * x); }
+    }
+    const a = actx, t = a.currentTime;
+    const o = a.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(620 + Math.random() * 120, t);
+    o.frequency.exponentialRampToValueAtTime(150, t + 1.5);
+    const vib = a.createOscillator(); vib.frequency.value = 6.5;
+    const vg = a.createGain(); vg.gain.value = 45;
+    vib.connect(vg); vg.connect(o.frequency); vib.start(t); vib.stop(t + 1.7);
+    const f1 = a.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 850; f1.Q.value = 1.4;
+    const f2 = a.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 1350; f2.Q.value = 2.5;
+    const g2 = a.createGain(); g2.gain.value = 0.6;
+    const ws = a.createWaveShaper(); ws.curve = screamCurve; ws.oversample = '2x';
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.12);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.7);
+    o.connect(f1); o.connect(f2); f2.connect(g2); f1.connect(ws); g2.connect(ws); ws.connect(g); g.connect(sfxBus);
+    o.start(t); o.stop(t + 1.8);
+  } catch { /* noop */ }
+}
+
+function rattle() {
+  if (!actx || !sfxBus) return;
+  try {
+    const a = actx, t0 = a.currentTime;
+    for (let i = 0; i < 4; i++) {
+      const t = t0 + i * (0.05 + Math.random() * 0.04);
+      const fr = 1800 + Math.random() * 2200;
+      const o = a.createOscillator(); o.type = 'square'; o.frequency.value = fr;
+      const f = a.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = fr; f.Q.value = 8;
+      const g = a.createGain();
+      g.gain.setValueAtTime(0.055, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+      o.connect(f); f.connect(g); g.connect(sfxBus);
+      o.start(t); o.stop(t + 0.12);
+    }
+  } catch { /* noop */ }
+}
+
+function stepThump(k: number) {
+  if (!actx || !sfxBus) return;
+  try {
+    const a = actx, t = a.currentTime;
+    const o = a.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(stepFlip ? 72 : 64, t);
+    stepFlip = !stepFlip;
+    o.frequency.exponentialRampToValueAtTime(38, t + 0.11);
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.05 + 0.06 * k, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+    o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + 0.16);
+  } catch { /* noop */ }
+}
+
+function heartThump(v = 1) {
+  if (!actx || !sfxBus) return;
+  try {
+    const a = actx, t = a.currentTime;
+    const o = a.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(58, t);
+    o.frequency.exponentialRampToValueAtTime(34, t + 0.16);
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.13 * v, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + 0.25);
+  } catch { /* noop */ }
+}
+
+function crackle() {
+  if (!actx || !sfxBus) return;
+  try {
+    const a = actx, t = a.currentTime;
+    const len = Math.floor(a.sampleRate * 0.05);
+    const b = a.createBuffer(1, len, a.sampleRate);
+    const dd = b.getChannelData(0);
+    for (let i = 0; i < len; i++) dd[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const s = a.createBufferSource(); s.buffer = b;
+    const f = a.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 2500;
+    const g = a.createGain(); g.gain.value = 0.05;
+    s.connect(f); f.connect(g); g.connect(sfxBus); s.start(t);
+  } catch { /* noop */ }
+}
+
+const ROAR_SPOTS: [number, number][] = [[40, -110], [-45, 35], [-105, 25], [55, 140], [-60, 110]];
+
+function updateWail(v: WailVoice | null, boost: number) {
+  if (!v || !actx) return;
+  const px = v.followsCompanion && companion ? companion.g.position.x : v.x;
+  const pz = v.followsCompanion && companion ? companion.g.position.z : v.z;
+  const dx = px - camera.position.x, dz = pz - camera.position.z;
+  const d = Math.hypot(dx, dz);
+  // cry envelope: swells and chokes, never steady, never resolving
+  const choke = 0.45 + 0.55 * Math.max(0, Math.sin(fxT * v.wob + v.seed));
+  const choke2 = 0.6 + 0.4 * Math.sin(fxT * v.wob * 2.7 + v.seed * 2);
+  const f = v.baseF * (0.82 + 0.38 * choke) * choke2 * boost;
+  v.osc.frequency.setTargetAtTime(Math.max(60, f), actx.currentTime, 0.09);
+  const atten = 1 / (1 + d * v.falloff);
+  v.gain.gain.setTargetAtTime(v.maxGain * choke * atten * boost, actx.currentTime, 0.18);
+  // stereo: which ear faces the suffering
+  const inv = 1 / Math.max(1, d);
+  const rx = Math.cos(yaw), rz = -Math.sin(yaw);
+  v.pan.pan.setTargetAtTime(THREE.MathUtils.clamp((dx * rx + dz * rz) * inv, -1, 1) * 0.85, actx.currentTime, 0.15);
+}
+
+function updateAudio(dt: number) {
+  if (!actx) return;
+  const t = actx.currentTime;
+  // fire roar follows the nearest flame
+  roarNear = 1e9;
+  for (const p of pits) {
+    const d = Math.hypot(camera.position.x - p.x, camera.position.z - p.z);
+    if (d < roarNear) roarNear = d;
+  }
+  for (const s of ROAR_SPOTS) {
+    const d = Math.hypot(camera.position.x - s[0], camera.position.z - s[1]);
+    if (d < roarNear) roarNear = d;
+  }
+  if (roarGain) {
+    const target = THREE.MathUtils.clamp(0.34 - roarNear * 0.006, 0.015, 0.3) * (phase === 'playing' ? 1 : 0.4);
+    roarGain.gain.setTargetAtTime(target, t, 0.5);
+  }
+  if (roarFilter) roarFilter.frequency.setTargetAtTime(240 + Math.min(900, (40 / Math.max(6, roarNear)) * 150), t, 0.5);
+  if (sfxBus && phase === 'playing' && roarNear < 26 && Math.random() < dt * (30 - roarNear) * 0.5) crackle();
+  // the damned, near and far
+  const lashBoost = compMode === 'lashed' ? 2.2 : 1;
+  updateWail(compVoice, lashBoost);
+  for (const v of chorusVoices) updateWail(v, 1);
+  // wind gusts that breathe
+  if (windGain) {
+    const base = 0.04 + zoneIdx * 0.014 + (Math.sin(fxT * 0.23) + Math.sin(fxT * 0.11 + 2)) * 0.02;
+    windGain.gain.setTargetAtTime(Math.max(0.01, base), t, 0.8);
+  }
+  // your own heart, quickening with thirst and fear
+  if (phase === 'playing') {
+    hbT -= dt;
+    if (hbT <= 0) {
+      const fear = THREE.MathUtils.clamp((thirst / 100) * 0.7 + ((100 - sanity) / 100) * 0.3, 0, 1);
+      hbT = 1.15 - 0.65 * fear;
+      heartThump();
+      setTimeout(() => heartThump(0.7), 170);
+    }
+  }
+}
 
 // ---------------------------------------------------------------- game state
 type Phase = 'menu' | 'playing' | 'overlay' | 'ended';
@@ -1038,11 +1342,15 @@ function setZone(i: number) {
   if (windGain && actx) windGain.gain.linearRampToValueAtTime(0.04 + zoneIdx * 0.016, actx.currentTime + 3);
 }
 
+let descending = false;
 function descend() {
-  if (zoneIdx >= ZONES.length - 1) return;
+  if (descending || zoneIdx >= ZONES.length - 1) return;
+  descending = true;
   fadeEl.style.opacity = '1';
   screamBurst();
   setTimeout(() => {
+    descending = false;
+    if (phase !== 'playing') return; // collapsed mid-fade: stay, do not skip a depth
     burden = Math.min(100, burden + 14);
     thirst = Math.min(100, thirst + 10);
     sanity = Math.max(10, sanity - 8);
@@ -1255,6 +1563,9 @@ function updatePlayer(dt: number) {
   // heavy, laggy acceleration = wading through suffering
   vel.lerp(wish, 1 - Math.exp(-dt * 3.2));
   camera.position.addScaledVector(vel, dt);
+  // footsteps — the ground answers every stride
+  stepAcc += vel.length() * dt;
+  if (stepAcc > 2.3 && vel.length() > 1.2) { stepAcc = 0; stepThump(Math.min(1, vel.length() / 9)); }
 
   // keep inside the pit + out of gate pillar sides is fine (walk through = descend)
   const r = Math.hypot(camera.position.x, camera.position.z);
@@ -1382,6 +1693,7 @@ placeGate(0);
 buildStations();
 buildWanderer();
 buildCompanion();
+buildAtmosphere();
 fadeEl.style.opacity = '1'; // starts black behind menu
 
 function loop() {
@@ -1390,6 +1702,8 @@ function loop() {
   if (phase === 'playing') { updatePlayer(dt); updateStations(); updateCompanion(dt); }
   updateAmbience(dt);
   updateFigures(dt);
+  updateAtmosphere(dt);
+  updateAudio(dt);
   renderer.render(scene, camera);
 }
 loop();
