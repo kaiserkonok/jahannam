@@ -1013,6 +1013,33 @@ function initAudio() {
 
   // ---- dread layers (research: dissonance + near-infrasound = unease) ----
   sfxBus = actx.createGain(); sfxBus.gain.value = 0.9; sfxBus.connect(master);
+  masterBus = master;
+  // shared looped-noise buffer for aspiration breath (one alloc, reused by wails)
+  sharedNoise = actx.createBuffer(1, actx.sampleRate * 2, actx.sampleRate);
+  {
+    const nd = sharedNoise.getChannelData(0);
+    for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  }
+  // wail bus with zone-darkening lowpass (vertical remix: deeper zones = darker)
+  wailBus = actx.createGain(); wailBus.gain.value = 1.0;
+  wailDark = actx.createBiquadFilter(); wailDark.type = 'lowpass'; wailDark.frequency.value = 3200; wailDark.Q.value = 0.4;
+  wailBus.connect(wailDark); wailDark.connect(sfxBus);
+  // procedural cavern reverb: 1.2s decaying-noise impulse, dry path kept + wet path added
+  {
+    const dur = 1.2, rate = actx.sampleRate, impLen = Math.floor(rate * dur);
+    const imp = actx.createBuffer(2, impLen, rate);
+    for (let ch = 0; ch < 2; ch++) {
+      const chd = imp.getChannelData(ch);
+      for (let i = 0; i < impLen; i++) {
+        const k = i / impLen;
+        chd[i] = (Math.random() * 2 - 1) * Math.pow(1 - k, 2.4);
+      }
+    }
+    verbNode = actx.createConvolver(); verbNode.buffer = imp;
+    verbSend = actx.createGain(); verbSend.gain.value = 1.0;
+    verbGain = actx.createGain(); verbGain.gain.value = 0.22;
+    sfxBus.connect(verbSend); verbSend.connect(verbNode); verbNode.connect(verbGain); verbGain.connect(master);
+  }
 
   // tritone against the 38Hz drone + a 19.5Hz near-infrasound weight
   const tri = actx.createOscillator(); tri.type = 'sawtooth'; tri.frequency.value = 53.7;
@@ -1102,10 +1129,21 @@ const ZONE_VOICE = [
 let sfxBus: GainNode | null = null;
 let roarGain: GainNode | null = null;
 let roarFilter: BiquadFilterNode | null = null;
+let masterBus: GainNode | null = null;
+let wailBus: GainNode | null = null;
+let wailDark: BiquadFilterNode | null = null;
+let verbNode: ConvolverNode | null = null;
+let verbSend: GainNode | null = null;
+let verbGain: GainNode | null = null;
+let sharedNoise: AudioBuffer | null = null;
+let masterVol = 0.8;
+let wasLashed = false;
+let choirDip = 0;
 interface WailVoice {
   osc: OscillatorNode; gain: GainNode; pan: StereoPannerNode;
   baseF: number; seed: number; wob: number; x: number; z: number;
   followsCompanion: boolean; maxGain: number; falloff: number;
+  effort: number; crackUntil: number;
 }
 let compVoice: WailVoice | null = null;
 let chorusVoices: WailVoice[] = [];
@@ -1117,19 +1155,29 @@ let roarNear = 1e9;
 
 function makeWail(baseF: number, x: number, z: number, follows: boolean, maxGain: number, falloff: number): WailVoice {
   const a = actx!;
+  const effort = 0.75 + Math.random() * 0.5;
   const osc = a.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = baseF;
   const vib = a.createOscillator(); vib.frequency.value = 5.2 + Math.random() * 1.6;
-  const vibG = a.createGain(); vibG.gain.value = baseF * 0.06;
+  const vibG = a.createGain(); vibG.gain.value = baseF * 0.06 * effort;
   vib.connect(vibG); vibG.connect(osc.frequency); vib.start();
   const f1 = a.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 750; f1.Q.value = 1.6;
   const f2 = a.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 1220; f2.Q.value = 2.2;
+  const f3 = a.createBiquadFilter(); f3.type = 'bandpass'; f3.frequency.value = 2500; f3.Q.value = 3.0;
   const g2 = a.createGain(); g2.gain.value = 0.5;
+  const g3 = a.createGain(); g3.gain.value = 0.22;
   const gain = a.createGain(); gain.gain.value = 0;
   const pan = a.createStereoPanner();
-  osc.connect(f1); osc.connect(f2); f2.connect(g2); f1.connect(gain); g2.connect(gain);
-  gain.connect(pan); pan.connect(sfxBus!);
+  osc.connect(f1); osc.connect(f2); osc.connect(f3); f2.connect(g2); f3.connect(g3); f1.connect(gain); g2.connect(gain); g3.connect(gain);
+  // faint aspiration noise (breath through the cry) — looped shared buffer
+  if (sharedNoise) {
+    const ns = a.createBufferSource(); ns.buffer = sharedNoise; ns.loop = true; ns.playbackRate.value = 0.6 + Math.random() * 0.3;
+    const nf = a.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 2500; nf.Q.value = 0.8;
+    const ng = a.createGain(); ng.gain.value = 0.05;
+    ns.connect(nf); nf.connect(ng); ng.connect(gain); ns.start();
+  }
+  gain.connect(pan); pan.connect(wailBus ?? sfxBus!);
   osc.start();
-  return { osc, gain, pan, baseF, seed: Math.random() * 10, wob: 0.45 + Math.random() * 0.5, x, z, followsCompanion: follows, maxGain, falloff };
+  return { osc, gain, pan, baseF, seed: Math.random() * 10, wob: 0.45 + Math.random() * 0.5, x, z, followsCompanion: follows, maxGain, falloff, effort, crackUntil: -1 };
 }
 
 // a near, human scream for the lash — pitch collapse + distortion, not a synth blip
@@ -1182,14 +1230,53 @@ function stepThump(k: number) {
   if (!actx || !sfxBus) return;
   try {
     const a = actx, t = a.currentTime;
+    const zi = zoneIdx;
     const o = a.createOscillator(); o.type = 'sine';
-    o.frequency.setValueAtTime(stepFlip ? 72 : 64, t);
-    stepFlip = !stepFlip;
-    o.frequency.exponentialRampToValueAtTime(38, t + 0.11);
+    if (zi <= 1) {
+      o.frequency.setValueAtTime(stepFlip ? 62 : 55, t);
+      stepFlip = !stepFlip;
+      o.frequency.exponentialRampToValueAtTime(30, t + 0.13);
+    } else if (zi <= 4) {
+      o.frequency.setValueAtTime(stepFlip ? 82 : 74, t);
+      stepFlip = !stepFlip;
+      o.frequency.exponentialRampToValueAtTime(40, t + 0.09);
+    } else {
+      o.frequency.setValueAtTime(stepFlip ? 66 : 60, t);
+      stepFlip = !stepFlip;
+      o.frequency.exponentialRampToValueAtTime(34, t + 0.12);
+    }
     const g = a.createGain();
     g.gain.setValueAtTime(0.05 + 0.06 * k, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
     o.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + 0.16);
+    // stone knock layer: bandpass click for zones 2-4
+    if (zi >= 2 && zi <= 4) {
+      const c = a.createOscillator(); c.type = 'triangle';
+      c.frequency.setValueAtTime(1050 + Math.random() * 350, t);
+      const cf = a.createBiquadFilter(); cf.type = 'bandpass'; cf.frequency.value = 1200; cf.Q.value = 5;
+      const cg = a.createGain();
+      cg.gain.setValueAtTime(0.03 + 0.03 * k, t);
+      cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+      c.connect(cf); cf.connect(cg); cg.connect(sfxBus); c.start(t); c.stop(t + 0.08);
+    }
+    // hollow keter + faint sizzle near lava (zone 4)
+    if (zi === 4) {
+      const h = a.createOscillator(); h.type = 'sine';
+      h.frequency.setValueAtTime(96, t);
+      h.frequency.exponentialRampToValueAtTime(48, t + 0.22);
+      const hg = a.createGain();
+      hg.gain.setValueAtTime(0.03 + 0.02 * k, t);
+      hg.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
+      h.connect(hg); hg.connect(sfxBus); h.start(t); h.stop(t + 0.26);
+      const slen = Math.floor(a.sampleRate * 0.16);
+      const sb = a.createBuffer(1, slen, a.sampleRate);
+      const sd = sb.getChannelData(0);
+      for (let i = 0; i < slen; i++) sd[i] = (Math.random() * 2 - 1) * (1 - i / slen);
+      const ss = a.createBufferSource(); ss.buffer = sb;
+      const sf = a.createBiquadFilter(); sf.type = 'highpass'; sf.frequency.value = 4200;
+      const sg = a.createGain(); sg.gain.value = 0.016;
+      ss.connect(sf); sf.connect(sg); sg.connect(sfxBus); ss.start(t);
+    }
   } catch { /* noop */ }
 }
 
@@ -1233,10 +1320,17 @@ function updateWail(v: WailVoice | null, boost: number) {
   // cry envelope: swells and chokes, never steady, never resolving
   const choke = 0.45 + 0.55 * Math.max(0, Math.sin(fxT * v.wob + v.seed));
   const choke2 = 0.6 + 0.4 * Math.sin(fxT * v.wob * 2.7 + v.seed * 2);
-  const f = v.baseF * (0.82 + 0.38 * choke) * choke2 * boost;
-  v.osc.frequency.setTargetAtTime(Math.max(60, f), actx.currentTime, 0.09);
+  const eff = v.effort;
+  // companion voice cracks under the lash: random downward pitch breaks
+  const lashed = v.followsCompanion && compMode === 'lashed';
+  if (lashed && Math.random() < 0.05) v.crackUntil = fxT + 0.1 + Math.random() * 0.18;
+  const cracked = lashed && fxT < v.crackUntil;
+  const crackMul = cracked ? 0.55 : 1;
+  const f = v.baseF * (0.82 + 0.38 * choke * eff) * choke2 * boost * crackMul;
+  v.osc.frequency.setTargetAtTime(Math.max(60, f), actx.currentTime, cracked ? 0.03 : 0.09);
   const atten = 1 / (1 + d * v.falloff);
-  v.gain.gain.setTargetAtTime(v.maxGain * choke * atten * boost, actx.currentTime, 0.18);
+  const dipMul = !v.followsCompanion && choirDip > 0 ? Math.max(0, 1 - choirDip * 4) : 1;
+  v.gain.gain.setTargetAtTime(v.maxGain * choke * (0.7 + 0.3 * eff) * atten * boost * dipMul, actx.currentTime, 0.18);
   // stereo: which ear faces the suffering
   const inv = 1 / Math.max(1, d);
   const rx = Math.cos(yaw), rz = -Math.sin(yaw);
@@ -1246,6 +1340,13 @@ function updateWail(v: WailVoice | null, boost: number) {
 function updateAudio(dt: number) {
   if (!actx) return;
   const t = actx.currentTime;
+  // lash edge -> brief choir silence-dip right before the strike lands
+  const lashedNow = compMode === 'lashed';
+  if (lashedNow && !wasLashed) choirDip = 0.28;
+  wasLashed = lashedNow;
+  if (choirDip > 0) choirDip = Math.max(0, choirDip - dt);
+  // wail bus darkens with depth (vertical remix, read-only zoneIdx)
+  if (wailDark) wailDark.frequency.setTargetAtTime(3200 - zoneIdx * 280, t, 0.6);
   // fire roar follows the nearest flame
   roarNear = 1e9;
   for (const p of pits) {
@@ -1256,14 +1357,25 @@ function updateAudio(dt: number) {
     const d = Math.hypot(camera.position.x - s[0], camera.position.z - s[1]);
     if (d < roarNear) roarNear = d;
   }
-  if (roarGain) {
-    const target = THREE.MathUtils.clamp(0.34 - roarNear * 0.006, 0.015, 0.3) * (phase === 'playing' ? 1 : 0.4);
-    roarGain.gain.setTargetAtTime(target, t, 0.5);
+  // swell roar near punishment stations (read-only stationsByZone + zoneIdx)
+  let stNear = 1e9;
+  const sts = stationsByZone[zoneIdx];
+  if (sts) {
+    for (let i = 0; i < sts.length; i++) {
+      const st = sts[i];
+      const d = Math.hypot(camera.position.x - st.x, camera.position.z - st.z);
+      if (d < stNear) stNear = d;
+    }
   }
-  if (roarFilter) roarFilter.frequency.setTargetAtTime(240 + Math.min(900, (40 / Math.max(6, roarNear)) * 150), t, 0.5);
+  if (roarGain) {
+    const base = THREE.MathUtils.clamp(0.34 - roarNear * 0.006, 0.015, 0.3);
+    const swell = THREE.MathUtils.clamp(0.22 - stNear * 0.008, 0, 0.22);
+    roarGain.gain.setTargetAtTime((base + swell) * (phase === 'playing' ? 1 : 0.4), t, 0.5);
+  }
+  if (roarFilter) roarFilter.frequency.setTargetAtTime(240 + Math.min(900, (40 / Math.max(6, Math.min(roarNear, stNear))) * 150), t, 0.5);
   if (sfxBus && phase === 'playing' && roarNear < 26 && Math.random() < dt * (30 - roarNear) * 0.5) crackle();
   // the damned, near and far
-  const lashBoost = compMode === 'lashed' ? 2.2 : 1;
+  const lashBoost = lashedNow ? 2.2 : 1;
   updateWail(compVoice, lashBoost);
   for (const v of chorusVoices) updateWail(v, 1);
   // wind gusts that breathe
@@ -1393,6 +1505,9 @@ addEventListener('keydown', (e) => {
   // [ / ] tune look speed live
   if (e.code === 'BracketLeft') setSensitivity(sensitivity - 0.0006);
   if (e.code === 'BracketRight') setSensitivity(sensitivity + 0.0006);
+  // - / = master volume (audio only)
+  if (e.code === 'Minus' || e.code === 'NumpadSubtract') { masterVol = Math.max(0, masterVol - 0.1); applyMasterVol(); }
+  if (e.code === 'Equal' || e.code === 'NumpadAdd') { masterVol = Math.min(1.2, masterVol + 0.1); applyMasterVol(); }
   // M mutes / unmutes the speaking voice
   if (e.code === 'KeyM') {
     voiceOn = !voiceOn;
@@ -1413,6 +1528,11 @@ function setSensitivity(v: number) {
   if (s) s.value = String(Math.round((sensitivity / 0.012) * 100));
   const label = $('sens-val');
   if (label) label.textContent = sensitivity.toFixed(4);
+}
+function applyMasterVol() {
+  if (masterBus && actx) masterBus.gain.setTargetAtTime(masterVol, actx.currentTime, 0.05);
+  const el = $('vol-val');
+  if (el) el.textContent = Math.round((masterVol / 1.0) * 100) + '%';
 }
 {
   const s = $('sens-slider') as HTMLInputElement | null;
