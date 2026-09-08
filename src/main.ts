@@ -372,7 +372,7 @@ function placeGate(zoneIdx: number) {
   // gates spawn ahead of where you face (±~55°), so looking around finds them
   const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
   const a = Math.atan2(fz, fx) + (Math.random() - 0.5) * 1.9;
-  const dist = 60 + zoneIdx * 10 + Math.random() * 30;
+  const dist = 55 + zoneIdx * 5 + Math.random() * 20;
   gateGroup.position.set(
     THREE.MathUtils.clamp(camera.position.x + Math.cos(a) * dist, -170, 170),
     0,
@@ -594,7 +594,7 @@ function buildStations() {
     }
     poolDisc(P, hx, hz, 3, brassMat);
     SF(zi, 'stand', hx, hz + 5.5, Math.PI, 1);
-    addStation(zi, hx, hz, 16, 'Boiling water, raised on hooks of iron — it melts the face before it ever touches the lips.', 'Tirmidhi 2586');
+    addStation(zi, hx, hz, 16, 'Boiling water, poured from above — it melts the face before it ever touches the lips.', 'Quran 22:19-20');
     // narrow pit (25:13-14): sunken ring, packed together, chained ankles
     {
       const nx = -15, nz = 85, ny = groundH(nx, nz);
@@ -737,8 +737,8 @@ function buildStations() {
       const walk = poolDisc(P, vx, vz, 1, thornMat);
       walk.scale.set(13, 1.8, 1);
       riser(P, vx, vy + 1, vz, 7, 1.0, 2.6, emberTex, 0.5);
-      SF(zi, 'walk', vx - 3, vz, Math.PI / 2, 1);
-      SF(zi, 'walk', vx + 3, vz, -Math.PI / 2, 1);
+      SF(zi, 'pace', vx - 3, vz, Math.PI / 2, 1);
+      SF(zi, 'pace', vx + 3, vz, -Math.PI / 2, 1);
       addStation(zi, vx, vz, 16, 'Walk to the water. It is boiling. Walk back to the fire. Walk again.', 'Quran 55:44');
     }
     // enlarged for feeling (Muslim 2851): one colossus half-sunk in fire
@@ -774,7 +774,7 @@ function buildStations() {
     // zamhareer (Bukhari & Muslim)
     poolDisc(P, -115, -75, 6, frostMat);
     pulse(frostMat, 1.5, 0.6, 1.1);
-    flame(P, -115, groundH(-115, -75) + 1.2, -75, 9, 2.6, eyeTex, 0.28);
+    flame(P, -115, groundH(-115, -75) + 1.2, -75, 9, 2.6, fogTex, 0.28);
     SF(zi, 'shiver', -115, -75, 0.8, 1);
     addStation(zi, -115, -75, 16, 'And a cold that burns worse than fire — bones cracking in the frost of Hell, begging for the flames again.', 'Bukhari & Muslim');
     // canopy of fire (39:16): ember ceiling over black water
@@ -909,7 +909,7 @@ function updateFigures(dt: number) {
     s.mesh.position.y = ph > 0.9 ? s.baseY - ((ph - 0.9) / 0.1) * 6.2 : s.baseY + Math.sin(fxT * 1.2 + s.seed) * 0.3;
   }
   for (const s of sufferers) {
-    if (s.mode === 'walk' || !s.g.visible) continue; // walker & chained one are driven separately
+    if (s.mode === 'walk' || s.mode === 'pace' || !s.g.visible) continue; // walker & pacers are driven below
     const t = fxT, sd = s.seed;
     if (s.mode === 'chained') {
       s.torso.rotation.z = Math.sin(t * 1.4 + sd) * 0.09;
@@ -970,6 +970,13 @@ function updateFigures(dt: number) {
     wanderer.armL.rotation.x = -sw * 0.35; wanderer.armR.rotation.x = sw * 0.35;
     wanderer.g.position.y += Math.abs(Math.cos(fxT * 3.4)) * 0.05;
   }
+  // the Sea-of-Fire pacers: endless march between boil and blaze, never arriving
+  for (const s of sufferers) {
+    if (s.mode !== 'pace' || !s.g.visible) continue;
+    const sw = Math.sin(fxT * 3.4 + s.seed);
+    s.legL.rotation.x = sw * 0.5; s.legR.rotation.x = -sw * 0.5;
+    s.armL.rotation.x = -sw * 0.35; s.armR.rotation.x = sw * 0.35;
+  }
 }
 
 function triggerStation(st: Station) {
@@ -977,7 +984,7 @@ function triggerStation(st: Station) {
   stationFireT = fxT;
   flash(0.6);
   screamBurst();
-  showSubtitle('\u201C' + st.line + '\u201D  — ' + st.ref, 6.5);
+  showSubtitle(st.line + '  — ' + st.ref, 6.5);
   speak(st.line);
   thirst = Math.min(100, thirst + 6);
   sanity = Math.max(0, sanity - 8);
@@ -996,7 +1003,7 @@ function updateStations() {
     const d = Math.hypot(camera.position.x - wanderer.g.position.x, camera.position.z - wanderer.g.position.z);
     if (d < 22) {
       (updateStations as unknown as { seen?: boolean }).seen = true;
-      showSubtitle('\u201COne of them walks. He cannot stop. There is nowhere to go.\u201D', 5);
+      showSubtitle('One of them walks. He cannot stop. There is nowhere to go.', 5);
     }
   }
 }
@@ -1197,7 +1204,7 @@ function updateCompanion(dt: number) {
       const L = LASH_LINES[li]; lashIdx++;
       lashBend = li >= 6; // the 4 new lines: abstract double-over staging only
       flash(0.3); screamVoice(); thud();
-      showSubtitle('\u201C' + L.line + '\u201D  — ' + L.ref, 5);
+      showSubtitle(L.line + '  — ' + L.ref, 5);
       speak(L.line);
       sanity = Math.max(0, sanity - 3);
     }
@@ -1363,8 +1370,8 @@ function speak(text: string) {
 
 // One spoken reminder per depth, on entry.
 const ZONE_VOICE = [
-  'The lightest punishment in Hell: sandals of fire that make the brain boil. And this is only the first depth.',
-  'They will beg for food, and be fed bitter thorn, that neither nourishes, nor ends hunger.',
+  'The lightest punishment in Hell: sandals of fire that make the brain boil. And this is only the first depth — reported by Bukhari and Muslim.',
+  'They will beg for food, and be fed bitter thorn, that neither nourishes, nor ends hunger — the thorn of the Quran.',
   'Seize him. Fetter him. Then chain him, in a chain of seventy cubits.',
   'Garments of fire are cut for them. And faces are turned over in the flames.',
   'Some drown to the ankles. Some to the waist. Some are swallowed whole. And boiling water is poured over their heads.',
@@ -1397,7 +1404,7 @@ let masterVol = 0.8;
 let wasLashed = false;
 let choirDip = 0;
 interface WailVoice {
-  osc: OscillatorNode; gain: GainNode; pan: StereoPannerNode;
+  osc: OscillatorNode; gain: GainNode; pan: StereoPannerNode | null;
   baseF: number; seed: number; wob: number; x: number; z: number;
   followsCompanion: boolean; maxGain: number; falloff: number;
   effort: number; crackUntil: number;
@@ -1423,7 +1430,8 @@ function makeWail(baseF: number, x: number, z: number, follows: boolean, maxGain
   const g2 = a.createGain(); g2.gain.value = 0.5;
   const g3 = a.createGain(); g3.gain.value = 0.22;
   const gain = a.createGain(); gain.gain.value = 0;
-  const pan = a.createStereoPanner();
+  let pan: StereoPannerNode | null = null;
+  try { pan = a.createStereoPanner(); } catch { pan = null; }
   osc.connect(f1); osc.connect(f2); osc.connect(f3); f2.connect(g2); f3.connect(g3); f1.connect(gain); g2.connect(gain); g3.connect(gain);
   // faint aspiration noise (breath through the cry) — looped shared buffer
   if (sharedNoise) {
@@ -1432,7 +1440,7 @@ function makeWail(baseF: number, x: number, z: number, follows: boolean, maxGain
     const ng = a.createGain(); ng.gain.value = 0.05;
     ns.connect(nf); nf.connect(ng); ng.connect(gain); ns.start();
   }
-  gain.connect(pan); pan.connect(wailBus ?? sfxBus!);
+  if (pan) { gain.connect(pan); pan.connect(wailBus ?? sfxBus!); } else { gain.connect(wailBus ?? sfxBus!); }
   osc.start();
   return { osc, gain, pan, baseF, seed: Math.random() * 10, wob: 0.45 + Math.random() * 0.5, x, z, followsCompanion: follows, maxGain, falloff, effort, crackUntil: -1 };
 }
@@ -1525,14 +1533,11 @@ function stepThump(k: number) {
       hg.gain.setValueAtTime(0.03 + 0.02 * k, t);
       hg.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
       h.connect(hg); hg.connect(sfxBus); h.start(t); h.stop(t + 0.26);
-      const slen = Math.floor(a.sampleRate * 0.16);
-      const sb = a.createBuffer(1, slen, a.sampleRate);
-      const sd = sb.getChannelData(0);
-      for (let i = 0; i < slen; i++) sd[i] = (Math.random() * 2 - 1) * (1 - i / slen);
-      const ss = a.createBufferSource(); ss.buffer = sb;
+      if (!sharedNoise) return;
+      const ss = a.createBufferSource(); ss.buffer = sharedNoise; ss.playbackRate.value = 1.7 + Math.random() * 0.4;
       const sf = a.createBiquadFilter(); sf.type = 'highpass'; sf.frequency.value = 4200;
       const sg = a.createGain(); sg.gain.value = 0.016;
-      ss.connect(sf); sf.connect(sg); sg.connect(sfxBus); ss.start(t);
+      ss.connect(sf); sf.connect(sg); sg.connect(sfxBus); ss.start(t); ss.stop(t + 0.16);
     }
   } catch { /* noop */ }
 }
@@ -1552,17 +1557,13 @@ function heartThump(v = 1) {
 }
 
 function crackle() {
-  if (!actx || !sfxBus) return;
+  if (!actx || !sfxBus || !sharedNoise) return;
   try {
     const a = actx, t = a.currentTime;
-    const len = Math.floor(a.sampleRate * 0.05);
-    const b = a.createBuffer(1, len, a.sampleRate);
-    const dd = b.getChannelData(0);
-    for (let i = 0; i < len; i++) dd[i] = (Math.random() * 2 - 1) * (1 - i / len);
-    const s = a.createBufferSource(); s.buffer = b;
+    const s = a.createBufferSource(); s.buffer = sharedNoise; s.playbackRate.value = 1.5 + Math.random();
     const f = a.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 2500;
     const g = a.createGain(); g.gain.value = 0.05;
-    s.connect(f); f.connect(g); g.connect(sfxBus); s.start(t);
+    s.connect(f); f.connect(g); g.connect(sfxBus); s.start(t); s.stop(t + 0.08);
   } catch { /* noop */ }
 }
 
@@ -1591,7 +1592,7 @@ function updateWail(v: WailVoice | null, boost: number) {
   // stereo: which ear faces the suffering
   const inv = 1 / Math.max(1, d);
   const rx = Math.cos(yaw), rz = -Math.sin(yaw);
-  v.pan.pan.setTargetAtTime(THREE.MathUtils.clamp((dx * rx + dz * rz) * inv, -1, 1) * 0.85, actx.currentTime, 0.15);
+  if (v.pan) v.pan.pan.setTargetAtTime(THREE.MathUtils.clamp((dx * rx + dz * rz) * inv, -1, 1) * 0.85, actx.currentTime, 0.15);
 }
 
 function updateAudio(dt: number) {
@@ -1860,11 +1861,13 @@ $('overlay-btn').addEventListener('click', () => {
     phase = 'playing'; setZone(0); lockPointer();
     return;
   }
-  // rise again in same zone, meters slightly eased so it is survivable but hopeless
-  thirst = Math.max(55, thirst - 25);
+  // rise again in same zone, meters eased so progress stays possible in deep zones
+  thirst = Math.max(35, thirst - 45);
+  burden = Math.max(0, burden - 12);
   sanity = Math.min(100, sanity + 25);
   stamina = 70;
   camera.position.set(spawnPos.x, 1.7, spawnPos.z);
+  vel.set(0, 0, 0);
   phase = 'playing';
   fadeEl.style.opacity = '0';
   lockPointer();
@@ -1909,9 +1912,11 @@ addEventListener('touchend', (e) => {
 // ---------------------------------------------------------------- helpers
 const groundH = (x: number, z: number) =>
   (Math.sin(x * 0.11) * Math.cos(z * 0.13) * 1.2 +
-   Math.sin(x * 0.31 + z * 0.21) * 0.45) * Math.min(Math.hypot(x, z) / 30, 1.4);
+   Math.sin(x * 0.31 + z * 0.21) * 0.45 +
+   Math.sin(x * 0.9) * Math.sin(z * 0.8) * 0.08) * Math.min(Math.hypot(x, z) / 30, 1.4);
 
 const fwd = new THREE.Vector3(), right = new THREE.Vector3();
+const wishV = new THREE.Vector3(), lookV = new THREE.Vector3(), toV = new THREE.Vector3();
 const clock = new THREE.Clock();
 
 function updatePlayer(dt: number) {
@@ -1928,7 +1933,7 @@ function updatePlayer(dt: number) {
   fwd.set(0, 0, -1).applyQuaternion(camera.quaternion); fwd.y = 0; fwd.normalize();
   right.set(1, 0, 0).applyQuaternion(camera.quaternion); right.y = 0; right.normalize();
 
-  const wish = new THREE.Vector3();
+  const wish = wishV.set(0, 0, 0);
   if (keys.has('KeyW') || keys.has('ArrowUp')) wish.add(fwd);
   if (keys.has('KeyS') || keys.has('ArrowDown')) wish.sub(fwd);
   if (keys.has('KeyD') || keys.has('ArrowRight')) wish.add(right);
@@ -1972,9 +1977,9 @@ function updatePlayer(dt: number) {
 
   // watchers drain sanity when looked at (zone >= IV)
   if (zoneIdx >= 3) {
-    const look = new THREE.Vector3(); camera.getWorldDirection(look);
+    const look = lookV; camera.getWorldDirection(look);
     for (const w of watchers) {
-      const to = w.position.clone().sub(camera.position).normalize();
+      const to = toV.copy(w.position).sub(camera.position).normalize();
       if (look.dot(to) > 0.985 && camera.position.distanceTo(w.position) < 90) {
         sanity = Math.max(0, sanity - dt * 9);
       }
@@ -1991,7 +1996,7 @@ function updatePlayer(dt: number) {
     if (d < 5) {
       thirst = Math.min(100, thirst + dt * 10);
       sanity = Math.max(0, sanity - dt * 6);
-      flash(0.4);
+      if (Math.random() < dt * 6) flash(0.4);
       if (Math.random() < dt * 2) showSubtitle('The fire kisses your skin and stays.', 2.5);
     }
   }
@@ -2000,7 +2005,7 @@ function updatePlayer(dt: number) {
   if (gateGroup.visible && gateDist < 24 && gateSaidZone !== zoneIdx) {
     gateSaidZone = zoneIdx;
     const G = GATE_LINES[zoneIdx % 2];
-    showSubtitle('\u201C' + G.line + '\u201D  — ' + G.ref, 5);
+    showSubtitle(G.line + '  — ' + G.ref, 5);
     speak(G.line);
   }
   // gate = descend
@@ -2045,7 +2050,7 @@ function updateAmbience(dt: number) {
   gateGlowMat.opacity = 0.75 + Math.sin(elapsed * 3.2) * 0.2;
   gateGroup.position.y = groundH(gateGroup.position.x, gateGroup.position.z);
   gateLight.position.set(gateGroup.position.x, 6, gateGroup.position.z);
-  gateLight.intensity = 50 + Math.sin(elapsed * 5) * 18;
+  gateLight.intensity = gateGroup.visible ? 50 + Math.sin(elapsed * 5) * 18 : 0;
   playerFlicker.position.copy(camera.position);
   playerFlicker.intensity = 4 + Math.sin(elapsed * 8.3) * 1.5;
 
