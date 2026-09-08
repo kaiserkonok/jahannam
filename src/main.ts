@@ -364,6 +364,11 @@ const gateGlowMat = new THREE.SpriteMaterial({ map: pitTex, transparent: true, b
 const gateGlow = new THREE.Sprite(gateGlowMat);
 gateGlow.scale.set(16, 22, 1); gateGlow.position.y = 7;
 gateGroup.add(gateGlow);
+// red beam pillar — visible across the whole map through fog, so the Gate is never lost
+const beamMat = new THREE.MeshBasicMaterial({ color: 0xff2d00, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
+const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 2.2, 150, 10, 1, true), beamMat);
+beam.position.y = 75;
+gateGroup.add(beam);
 scene.add(gateGroup);
 
 function placeGate(zoneIdx: number) {
@@ -1659,6 +1664,7 @@ let phase: Phase = 'menu';
 let zoneIdx = 0;
 let thirst = 12, burden = 5, sanity = 100, stamina = 100;
 let whisperTimer = 6;
+let warnedFall = false; // pre-collapse warning, once per depth
 let subTimer = 0;
 let elapsed = 0;
 let runBreath = 0;
@@ -1702,6 +1708,7 @@ function setZone(i: number) {
   zoneFigs.forEach((arr, i) => arr.forEach((f) => (f.g.visible = i === zoneIdx)));
   placeCompanionAhead(); // he descends with you — the chain does not break
   gateSaidZone = -1;
+  warnedFall = false;
   speak(ZONE_VOICE[zoneIdx]);
   // reset player to spawn, keep meters (suffering accumulates)
   camera.position.set(spawnPos.x, 1.7, spawnPos.z);
@@ -1735,10 +1742,13 @@ function collapse() {
   unlockPointer();
   flash(1);
   screamBurst();
-  const t = ZONES[zoneIdx];
-  void t;
-  $('overlay-title').textContent = 'YOU COLLAPSED';
+  const byThirst = thirst >= 100;
+  $('overlay-title').textContent = byThirst ? 'CONSUMED BY THIRST' : 'YOUR HEART GAVE OUT';
   $('overlay-text').textContent =
+    (byThirst
+      ? 'Your thirst reached its end. You did not reach the Gate in time.'
+      : 'Your heart could not carry the dread. You did not reach the Gate in time.') +
+    '\n\n' +
     COLLAPSE_TEXTS[Math.floor(Math.random() * COLLAPSE_TEXTS.length)] +
     '\n\nBut there is no death here. Only rising — and descending again. (Thirst and Burden remain.)';
   overlayEl.classList.remove('hidden');
@@ -1847,6 +1857,12 @@ $('start-btn').addEventListener('click', () => {
   setZone(0);
   fadeEl.style.opacity = '0';
   lockPointer();
+  setTimeout(() => {
+    if (phase === 'playing' && zoneIdx === 0) showCenter('FIND THE RED GATE — walk into the red beam to descend.', 4.5);
+  }, 1500);
+  setTimeout(() => {
+    if (phase === 'playing' && zoneIdx === 0) showCenter('Your THIRST always rises. Only the Gate moves you down.', 4.5);
+  }, 12000);
   setTimeout(() => {
     if (phase === 'playing') showCenter('One is chained to you. Where you walk, he follows — watch what waits for you.', 4.5);
   }, 7000);
@@ -2016,12 +2032,35 @@ function updatePlayer(dt: number) {
     finish();
   }
 
+  if (!warnedFall && (thirst > 85 || sanity < 15)) {
+    warnedFall = true;
+    showCenter('You are falling — reach the Gate!', 3);
+    speak('You are falling. Reach the gate.');
+  }
   if ((thirst >= 100 || sanity <= 0) && phase === 'playing') collapse();
 
   // HUD
   thirstFill.style.width = thirst + '%';
   burdenFill.style.width = burden + '%';
   sanityFill.style.width = sanity + '%';
+  // objective compass: arrow + live distance to the Gate — no more wandering blind
+  {
+    const arr = $('gate-arrow') as HTMLElement, gd = $('gate-dist');
+    if (arr && gd) {
+      if (zoneIdx >= ZONES.length - 1 || !gateGroup.visible) {
+        arr.textContent = '✕'; arr.style.transform = '';
+        gd.textContent = 'NO GATE REMAINS — WALK TO THE CENTER';
+      } else {
+        const ang = Math.atan2(gateGroup.position.x - camera.position.x, gateGroup.position.z - camera.position.z);
+        const facing = Math.atan2(-Math.sin(yaw), -Math.cos(yaw));
+        let rel = facing - ang;
+        rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+        arr.textContent = '▲';
+        arr.style.transform = `rotate(${rel}rad)`;
+        gd.textContent = `GATE ${Math.round(camera.position.distanceTo(gateGroup.position))}m — FOLLOW THE RED BEAM`;
+      }
+    }
+  }
   // heartbeat vignette as thirst peaks
   ($('vignette') as HTMLElement).style.opacity = String(0.7 + (thirst / 100) * 0.6 + Math.sin(elapsed * 6) * 0.06 * (thirst / 100));
 }
