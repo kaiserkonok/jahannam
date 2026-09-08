@@ -653,7 +653,7 @@ function updateFigures(dt: number) {
     s.mesh.position.y = ph > 0.9 ? s.baseY - ((ph - 0.9) / 0.1) * 6.2 : s.baseY + Math.sin(fxT * 1.2 + s.seed) * 0.3;
   }
   for (const s of sufferers) {
-    if (s === wanderer || !s.g.visible) continue;
+    if (s.mode === 'walk' || !s.g.visible) continue; // walker & chained one are driven separately
     const t = fxT, sd = s.seed;
     if (s.mode === 'chained') {
       s.torso.rotation.z = Math.sin(t * 1.4 + sd) * 0.09;
@@ -681,6 +681,9 @@ function updateFigures(dt: number) {
     } else { // stand / headback — the light tremble
       s.torso.rotation.x = Math.sin(t * 4.7 + sd) * 0.02;
     }
+    // near you, their torment visibly redoubles — twist harder the closer you stand
+    const dc = Math.hypot(camera.position.x - s.g.position.x, camera.position.z - s.g.position.z);
+    s.torso.rotation.y = Math.sin(t * 7 + sd) * 0.09 * Math.max(0, 1 - dc / 25);
   }
   if (wanderer) {
     wanderAngle += dt * 0.028;
@@ -720,6 +723,160 @@ function updateStations() {
       (updateStations as unknown as { seen?: boolean }).seen = true;
       showSubtitle('\u201COne of them walks. He cannot stop. There is nowhere to go.\u201D', 5);
     }
+  }
+}
+
+// ---------------------------------------------------------------- the chained one
+// A sufferer bound to YOU — always a few steps ahead, always in sight,
+// always being punished. You never hunt for him. He is the preview.
+const LASH_LINES: { line: string; ref: string }[] = [
+  { line: 'This is the Fire which you used to deny.', ref: 'Quran 52:14' },
+  { line: 'You will remain. There is no second death here.', ref: 'Quran 43:77' },
+  { line: 'New skins, again and again — so the suffering never dulls.', ref: 'Quran 4:56' },
+  { line: 'Beg for water, and receive molten brass.', ref: 'Quran 18:29' },
+  { line: 'A thousand years of screaming — and not one cry answered.', ref: 'Tirmidhi 2586' },
+  { line: 'Every escape is struck back down.', ref: 'Quran 22:22' },
+];
+
+let companion: Shade | null = null;
+const compChain: THREE.Mesh[] = [];
+let striker: THREE.Mesh | null = null;
+let compMode: 'trudge' | 'fallen' | 'lashed' = 'trudge';
+let compT = 0;
+let nextStumble = 9;
+let nextLash = 14;
+let lashIdx = 0;
+let fallDir = 1;
+
+function whimper() {
+  if (!actx) return;
+  try {
+    const t = actx.currentTime;
+    const o = actx.createOscillator(); o.type = 'triangle';
+    o.frequency.setValueAtTime(300 + Math.random() * 90, t);
+    o.frequency.exponentialRampToValueAtTime(130, t + 0.7);
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.12, t + 0.1);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+    o.connect(g); g.connect(actx.destination);
+    o.start(t); o.stop(t + 0.9);
+  } catch { /* noop */ }
+}
+
+function buildCompanion() {
+  companion = makeShade('walk', 0, 13, Math.PI, 1.0);
+  for (let i = 0; i < 8; i++) {
+    const m = new THREE.Mesh(linkGeo, ironMat);
+    scene.add(m); compChain.push(m);
+  }
+  striker = box(scene, ironMat, 0, 8, 13, 1.3, 1.3, 1.3);
+  const gl = new THREE.SpriteMaterial({ map: emberTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.5 });
+  const gs = new THREE.Sprite(gl); gs.scale.set(3, 3, 1); striker.add(gs);
+  // foot-glow so your eyes always find him in the dark
+  const fg = new THREE.SpriteMaterial({ map: emberTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.35 });
+  const fs = new THREE.Sprite(fg); fs.scale.set(2.6, 1.6, 1); fs.position.y = 0.4;
+  companion.g.add(fs);
+}
+
+function placeCompanionAhead() {
+  if (!companion) return;
+  const ax = camera.position.x - Math.sin(yaw) * 7;
+  const az = camera.position.z - Math.cos(yaw) * 7;
+  companion.g.position.set(ax, groundH(ax, az), az);
+  companion.baseY = companion.g.position.y;
+  companion.g.rotation.set(0, yaw, 0);
+  compMode = 'trudge'; compT = 0;
+  nextStumble = 7 + Math.random() * 6;
+  nextLash = 10 + Math.random() * 8;
+}
+
+function updateCompanion(dt: number) {
+  if (!companion || phase !== 'playing') return;
+  const c = companion;
+  compT += dt;
+  // the ahead-point: 7m in front of where YOU face — he hurries back into frame
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+  let tx = camera.position.x + fx * 7;
+  let tz = camera.position.z + fz * 7;
+  const tr = Math.hypot(tx, tz);
+  if (tr > 180) { tx *= 180 / tr; tz *= 180 / tr; }
+  const dx = tx - c.g.position.x, dz = tz - c.g.position.z;
+  const d = Math.hypot(dx, dz);
+
+  if (compMode === 'fallen') {
+    // collapsed in the dirt, then struggles back up — he is never allowed rest
+    c.g.rotation.z += (fallDir * 1.35 - c.g.rotation.z) * Math.min(1, dt * 5);
+    c.g.position.y += (c.baseY + 0.25 - c.g.position.y) * Math.min(1, dt * 5);
+    if (compT > 2.4) { compMode = 'trudge'; compT = 0; }
+  } else if (compMode === 'lashed') {
+    // struck — convulsing under the striker
+    c.g.position.x += (Math.random() - 0.5) * 0.22;
+    c.g.position.z += (Math.random() - 0.5) * 0.22;
+    c.torso.rotation.y = Math.sin(fxT * 42) * 0.45;
+    c.head.rotation.x = -0.6;
+    if (striker) {
+      const by = c.g.position.y;
+      striker.position.x = c.g.position.x; striker.position.z = c.g.position.z;
+      striker.position.y = compT < 0.12 ? by + 6.5 - (compT / 0.12) * 5.1
+        : compT < 0.3 ? by + 1.4
+        : by + 1.4 + Math.min(1, (compT - 0.3) / 0.8) * 5.1 + Math.sin(fxT * 1.3) * 0.25;
+    }
+    if (compT > 1.1) { compMode = 'trudge'; compT = 0; c.torso.rotation.y = 0; }
+  } else {
+    // trudge: hurries when left behind, trudges head-hung when near
+    const speed = d > 14 ? 10.5 : d > 8 ? 6 : 3.4;
+    if (d > 0.5) {
+      c.g.position.x += (dx / d) * speed * dt;
+      c.g.position.z += (dz / d) * speed * dt;
+    }
+    c.g.position.y = groundH(c.g.position.x, c.g.position.z) + Math.abs(Math.cos(fxT * 3.4)) * 0.04;
+    if (d > 0.6) {
+      const targetRy = Math.atan2(dx, dz);
+      let dr = targetRy - c.g.rotation.y;
+      dr = Math.atan2(Math.sin(dr), Math.cos(dr));
+      c.g.rotation.y += dr * Math.min(1, dt * 6);
+    }
+    c.g.rotation.z += (0 - c.g.rotation.z) * Math.min(1, dt * 4);
+    const sw = Math.sin(fxT * (3 + speed * 0.35));
+    const amp = 0.25 + speed * 0.035;
+    c.legL.rotation.x = sw * amp * 1.6; c.legR.rotation.x = -sw * amp * 1.6;
+    c.armL.rotation.x = -sw * amp; c.armR.rotation.x = sw * amp;
+    c.head.rotation.x = 0.45; // hung — always
+    if (striker) striker.position.set(c.g.position.x, c.g.position.y + 6.5 + Math.sin(fxT * 1.3) * 0.25, c.g.position.z);
+    nextStumble -= dt;
+    if (nextStumble <= 0) {
+      compMode = 'fallen'; compT = 0; fallDir = Math.random() < 0.5 ? -1 : 1;
+      nextStumble = 8 + Math.random() * 9;
+      whimper();
+      sanity = Math.max(0, sanity - 2);
+    }
+  }
+  // the lash finds him wherever he is, on its own timer
+  if (compMode === 'trudge') {
+    nextLash -= dt;
+    if (nextLash <= 0) {
+      compMode = 'lashed'; compT = 0;
+      nextLash = 16 + Math.random() * 10;
+      const L = LASH_LINES[lashIdx % LASH_LINES.length]; lashIdx++;
+      flash(0.3); screamBurst(); thud();
+      showSubtitle('\u201C' + L.line + '\u201D  — ' + L.ref, 5);
+      speak(L.line);
+      sanity = Math.max(0, sanity - 3);
+    }
+  }
+  // the chain binding him to you — sagging between you both, always
+  const ax = c.g.position.x, ay = c.g.position.y + 1.3, az = c.g.position.z;
+  const bx = camera.position.x, by = groundH(camera.position.x, camera.position.z) + 0.5, bz = camera.position.z;
+  for (let i = 0; i < compChain.length; i++) {
+    const t = i / (compChain.length - 1);
+    const m = compChain[i];
+    m.position.set(ax + (bx - ax) * t, ay + (by - ay) * t - Math.sin(t * Math.PI) * 0.9, az + (bz - az) * t);
+    m.rotation.y = (i % 2) * Math.PI / 2 + Math.sin(fxT * 0.8 + i) * 0.1;
+  }
+  if (striker && compMode !== 'lashed') {
+    striker.position.x += (c.g.position.x - striker.position.x) * Math.min(1, dt * 5);
+    striker.position.z += (c.g.position.z - striker.position.z) * Math.min(1, dt * 5);
   }
 }
 
@@ -869,6 +1026,7 @@ function setZone(i: number) {
   // only this depth's punishments stand visible; the voice names the depth
   zoneProps.forEach((g, i) => (g.visible = i === zoneIdx));
   zoneFigs.forEach((arr, i) => arr.forEach((f) => (f.g.visible = i === zoneIdx)));
+  placeCompanionAhead(); // he descends with you — the chain does not break
   speak(ZONE_VOICE[zoneIdx]);
   // reset player to spawn, keep meters (suffering accumulates)
   camera.position.set(spawnPos.x, 1.7, spawnPos.z);
@@ -1002,6 +1160,9 @@ $('start-btn').addEventListener('click', () => {
   setZone(0);
   fadeEl.style.opacity = '0';
   lockPointer();
+  setTimeout(() => {
+    if (phase === 'playing') showCenter('One is chained to you. Where you walk, he follows — watch what waits for you.', 4.5);
+  }, 7000);
 });
 $('overlay-btn').addEventListener('click', () => {
   overlayEl.classList.add('hidden');
@@ -1220,12 +1381,13 @@ function updateAmbience(dt: number) {
 placeGate(0);
 buildStations();
 buildWanderer();
+buildCompanion();
 fadeEl.style.opacity = '1'; // starts black behind menu
 
 function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(clock.getDelta(), 0.05);
-  if (phase === 'playing') { updatePlayer(dt); updateStations(); }
+  if (phase === 'playing') { updatePlayer(dt); updateStations(); updateCompanion(dt); }
   updateAmbience(dt);
   updateFigures(dt);
   renderer.render(scene, camera);
