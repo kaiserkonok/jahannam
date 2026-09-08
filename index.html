@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>JAHANNAM — A Reminder of the Hereafter</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- vignette / heat / damage overlays -->
+  <div id="vignette"></div>
+  <div id="heat"></div>
+  <div id="fade"></div>
+  <div id="flash"></div>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="zone-box">
+      <div id="zone-name">I — Wastes of Thirst</div>
+      <div id="depth">DEPTH: 1 / 7</div>
+    </div>
+    <div id="meters">
+      <div class="meter"><label>THIRST</label><div class="bar"><div id="thirst-fill"></div></div></div>
+      <div class="meter"><label>BURDEN</label><div class="bar"><div id="burden-fill"></div></div></div>
+      <div class="meter"><label>HEART</label><div class="bar"><div id="sanity-fill"></div></div></div>
+    </div>
+    <div id="hint">WASD walk &nbsp;•&nbsp; Mouse look &nbsp;•&nbsp; Q/E turn &nbsp;•&nbsp; SHIFT run &nbsp;•&nbsp; Find the red Gate</div>
+    <div id="sens-box">LOOK [<span id="look-mode">CLICK</span>] <input id="sens-slider" type="range" min="8" max="100" value="40" /><span id="sens-val">0.0048</span><span class="sens-keys">[ ] keys</span></div>
+  </div>
+
+  <div id="subtitle"></div>
+  <div id="center-msg"></div>
+  <div id="crosshair" class="hidden">+</div>
+
+  <!-- Title screen -->
+  <div id="menu">
+    <div class="menu-inner">
+      <div class="warn">⚠ HEADPHONES RECOMMENDED • DISTURBING THEMES • FICTIONAL ALLEGORY</div>
+      <h1>JAHANNAM</h1>
+      <p class="tag">Not a game to win. A place to remember.<br/>Feel — for a minute — how bad Hell will be in the Hereafter.</p>
+      <p class="lore">
+        You will walk. You will thirst. No water will quench you.<br/>
+        You will look for an exit. There is only descent.<br/>
+        Death will not save you here.
+      </p>
+      <button id="start-btn">ENTER</button>
+      <div class="controls">WASD / Arrows — walk &nbsp;•&nbsp; Mouse — look (click captures it) &nbsp;•&nbsp; Q / E — turn &nbsp;•&nbsp; SHIFT — stagger-run &nbsp;•&nbsp; Mobile: left drag move, right drag look</div>
+      <div class="disc">An artistic reminder, not a theological depiction. Turn back to good while you still can.</div>
+    </div>
+  </div>
+
+  <!-- Resume / collapse / end screens -->
+  <div id="overlay" class="hidden">
+    <div class="menu-inner">
+      <h2 id="overlay-title">YOU COLLAPSED</h2>
+      <p id="overlay-text"></p>
+      <button id="overlay-btn">RISE AGAIN</button>
+    </div>
+  </div>
+
+  <div id="touch-stick"><div id="stick-knob"></div></div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
