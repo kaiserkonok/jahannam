@@ -291,6 +291,61 @@ for (let i = 0; i < 14; i++) {
   scene.add(sp); watchers.push(sp);
 }
 
+// ---------------------------------------------------------------- shadow sufferers
+// Deliberately NOT human depictions: whole-black silhouettes, featureless,
+// no face, no eyes, no skin — a body-shape of a man and nothing more.
+const shadeMat = new THREE.MeshStandardMaterial({
+  color: 0x080808, roughness: 0.85, metalness: 0.1,
+  emissive: 0x220400, emissiveIntensity: 0.8,
+});
+const shadeTorsoGeo = new THREE.CapsuleGeometry(0.34, 0.9, 4, 10);
+const shadeHeadGeo = new THREE.SphereGeometry(0.24, 12, 10);
+const shadeLimbGeo = new THREE.CapsuleGeometry(0.11, 0.75, 4, 8);
+
+interface Shade {
+  g: THREE.Group; torso: THREE.Mesh; head: THREE.Mesh;
+  armL: THREE.Group; armR: THREE.Group; legL: THREE.Group; legR: THREE.Group;
+  seed: number; mode: string; baseY: number;
+}
+const sufferers: Shade[] = [];
+
+function makeShade(mode: string, x: number, z: number, ry = 0, scale = 1): Shade {
+  const g = new THREE.Group();
+  const torso = new THREE.Mesh(shadeTorsoGeo, shadeMat);
+  torso.position.y = 1.15; g.add(torso);
+  const head = new THREE.Mesh(shadeHeadGeo, shadeMat); // blank — no face at all
+  head.position.y = 2.0; g.add(head);
+  const mkLimb = (px: number, py: number) => {
+    const pivot = new THREE.Group(); pivot.position.set(px, py, 0);
+    const m = new THREE.Mesh(shadeLimbGeo, shadeMat); m.position.y = -0.45; pivot.add(m);
+    g.add(pivot); return pivot;
+  };
+  const armL = mkLimb(-0.44, 1.55), armR = mkLimb(0.44, 1.55);
+  const legL = mkLimb(-0.16, 0.9), legR = mkLimb(0.16, 0.9);
+
+  if (mode === 'chained') { armL.rotation.z = 2.55; armR.rotation.z = -2.55; head.rotation.x = 0.35; }
+  if (mode === 'kneel') {
+    legL.rotation.x = -1.9; legR.rotation.x = -1.9;
+    torso.position.y = 0.72; head.position.y = 1.55; head.rotation.x = 0.5;
+    armL.position.y = 1.1; armR.position.y = 1.1;
+  }
+  if (mode === 'reach') { armR.rotation.x = -2.7; head.rotation.x = -0.45; }
+  if (mode === 'sit') {
+    legL.rotation.x = -1.5; legR.rotation.x = -1.5;
+    torso.position.y = 0.62; head.position.y = 1.38; head.rotation.x = 0.55;
+  }
+  if (mode === 'headback') { head.rotation.x = -0.7; }
+  if (mode === 'submerged') { head.rotation.x = -0.5; armL.rotation.x = -0.9; armR.rotation.x = -0.9; }
+
+  g.position.set(x, groundH(x, z), z);
+  g.rotation.y = ry;
+  g.scale.setScalar(scale);
+  scene.add(g);
+  const s: Shade = { g, torso, head, armL, armR, legL, legR, seed: Math.random() * 100, mode, baseY: g.position.y };
+  sufferers.push(s);
+  return s;
+}
+
 // THE GATE — descent portal
 const gateGroup = new THREE.Group();
 const gateMesh = new THREE.Mesh(
@@ -317,6 +372,355 @@ function placeGate(zoneIdx: number) {
     0,
     THREE.MathUtils.clamp(camera.position.z + Math.sin(a) * dist, -170, 170));
   gateGroup.rotation.y = Math.atan2(camera.position.x - gateGroup.position.x, camera.position.z - gateGroup.position.z);
+}
+
+// ---------------------------------------------------------------- punishment stations
+// Every torment here is drawn from the Quran and Hadith (see refs on triggers).
+// One zone-group of props per depth; only the current depth's horrors are visible.
+const zoneProps: THREE.Group[] = [];
+const zoneFigs: Shade[][] = [];
+const stationsByZone: Station[][] = [];
+for (let i = 0; i < 7; i++) {
+  const grp = new THREE.Group(); grp.visible = false; scene.add(grp);
+  zoneProps.push(grp); zoneFigs.push([]); stationsByZone.push([]);
+}
+interface Station { x: number; z: number; r: number; line: string; ref: string; last: number; }
+
+const ironMat = new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.55, metalness: 0.75 });
+const emberHotMat = new THREE.MeshStandardMaterial({ color: 0x1a0500, emissive: 0xff4400, emissiveIntensity: 2.0 });
+const brassMat = new THREE.MeshStandardMaterial({ color: 0x140800, emissive: 0xff9500, emissiveIntensity: 1.8 });
+const lavaMat = new THREE.MeshStandardMaterial({ color: 0x200400, emissive: 0xff2d00, emissiveIntensity: 1.6 });
+const frostMat = new THREE.MeshStandardMaterial({ color: 0x0a1626, emissive: 0x86ccff, emissiveIntensity: 1.5 });
+const thornMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 1 });
+const fruitMat = new THREE.MeshStandardMaterial({ color: 0x201000, emissive: 0xffb300, emissiveIntensity: 2.4 });
+const streamMat = new THREE.MeshStandardMaterial({ color: 0x1a0500, emissive: 0xff6a00, emissiveIntensity: 2.6 });
+
+const pulsers: { m: THREE.MeshStandardMaterial; base: number; amp: number; speed: number; seed: number }[] = [];
+function pulse(mat: THREE.MeshStandardMaterial, base: number, amp = 0.5, speed = 2) {
+  pulsers.push({ m: mat, base, amp, speed, seed: Math.random() * 10 });
+  mat.emissiveIntensity = base;
+}
+const risers: { sp: THREE.Sprite; x: number; y0: number; z: number; h: number; speed: number; seed: number; s: number; op: number }[] = [];
+function riser(parent: THREE.Object3D, x: number, y0: number, z: number, h: number, speed: number, s: number, tex: THREE.Texture, op = 0.7) {
+  const m = new THREE.SpriteMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: op });
+  const sp = new THREE.Sprite(m); sp.position.set(x, y0, z); sp.scale.set(s, s, 1);
+  parent.add(sp);
+  risers.push({ sp, x, y0, z, h, speed, seed: Math.random() * 10, s, op });
+}
+const flames: { sp: THREE.Sprite; seed: number; bx: number; by: number }[] = [];
+function flame(parent: THREE.Object3D, x: number, y: number, z: number, sx: number, sy: number, tex: THREE.Texture, op = 0.85) {
+  const m = new THREE.SpriteMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: op });
+  const sp = new THREE.Sprite(m); sp.position.set(x, y, z); sp.scale.set(sx, sy, 1);
+  parent.add(sp);
+  flames.push({ sp, seed: Math.random() * 10, bx: sx, by: sy });
+}
+const slammers: { mesh: THREE.Mesh; baseY: number; seed: number; prev: number }[] = [];
+
+const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+const postGeo = new THREE.BoxGeometry(0.8, 1, 0.8);
+const barGeo = new THREE.CylinderGeometry(0.35, 0.45, 1, 8);
+const discGeo = new THREE.CircleGeometry(1, 28);
+const ballGeo = new THREE.SphereGeometry(1, 12, 10);
+const coneGeo = new THREE.ConeGeometry(1, 1, 7);
+const linkGeo = new THREE.TorusGeometry(0.35, 0.09, 6, 12);
+
+function box(parent: THREE.Object3D, mat: THREE.Material, x: number, y: number, z: number, sx: number, sy: number, sz: number, ry = 0) {
+  const m = new THREE.Mesh(boxGeo, mat);
+  m.position.set(x, y, z); m.scale.set(sx, sy, sz); m.rotation.y = ry;
+  parent.add(m); return m;
+}
+function post(parent: THREE.Object3D, x: number, z: number, h: number, mat: THREE.Material = ironMat) {
+  const m = new THREE.Mesh(postGeo, mat);
+  m.position.set(x, groundH(x, z) + h / 2, z); m.scale.set(1.4, h, 1.4);
+  parent.add(m); return m;
+}
+function poolDisc(parent: THREE.Object3D, x: number, z: number, r: number, mat: THREE.Material) {
+  const m = new THREE.Mesh(discGeo, mat);
+  m.rotation.x = -Math.PI / 2; m.position.set(x, groundH(x, z) + 0.12, z); m.scale.set(r, r, 1);
+  parent.add(m); return m;
+}
+// a black silhouette placed into a depth's cast
+function SF(zi: number, mode: string, x: number, z: number, ry = 0, scale = 1, sink = 0) {
+  const s = makeShade(mode, x, z, ry, scale);
+  s.g.position.y += sink; s.baseY = s.g.position.y;
+  zoneFigs[zi].push(s);
+  return s;
+}
+function addStation(zi: number, x: number, z: number, r: number, line: string, ref: string) {
+  stationsByZone[zi].push({ x, z, r, line, ref, last: -1000 });
+}
+function chainRun(parent: THREE.Object3D, ax: number, ay: number, az: number, bx: number, by: number, bz: number, links = 9) {
+  for (let i = 0; i < links; i++) {
+    const t = i / (links - 1);
+    const m = new THREE.Mesh(linkGeo, ironMat);
+    m.position.set(ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t);
+    m.rotation.y = (i % 2) * Math.PI / 2;
+    parent.add(m);
+  }
+}
+
+function buildStations() {
+  // ——— DEPTH I — Wastes of Thirst ———
+  { const zi = 0, P = zoneProps[zi];
+    // sandals of fire: the lightest torment (Bukhari & Muslim)
+    box(P, emberHotMat, 30, groundH(30, -20) + 0.1, -20, 0.55, 0.2, 1.15);
+    box(P, emberHotMat, 31, groundH(31, -20) + 0.1, -20, 0.55, 0.2, 1.15);
+    SF(zi, 'headback', 30.5, -20, Math.PI, 1);
+    addStation(zi, 30.5, -20, 15, 'The least punished here thinks no one suffers more than him — yet his torment is only sandals of fire, boiling his brain.', 'Bukhari & Muslim');
+    // molten-brass drink (18:29)
+    const cx = -45, cz = 35, cy = groundH(cx, cz);
+    const pot = new THREE.Mesh(barGeo, ironMat); pot.position.set(cx, cy + 1.3, cz); pot.scale.set(2.4, 2.6, 2.4); P.add(pot);
+    poolDisc(P, cx, cz, 2.0, brassMat).position.y = cy + 2.65;
+    flame(P, cx, cy + 0.8, cz, 7, 4, pitTex, 0.7);
+    riser(P, cx, cy + 3, cz, 7, 1.1, 2.4, pitTex);
+    SF(zi, 'kneel', cx + 4.2, cz + 1, -Math.PI / 2.3, 1);
+    addStation(zi, cx, cz, 16, 'Water like molten brass — it scalds the face as it nears. What an evil drink, what an evil rest.', 'Quran 18:29');
+  }
+  // ——— DEPTH II — Pit of Whispers ———
+  { const zi = 1, P = zoneProps[zi];
+    // dari thorn (88:6-7)
+    for (let i = 0; i < 7; i++) {
+      const x = 60 + (Math.random() - 0.5) * 9, z = 55 + (Math.random() - 0.5) * 9;
+      const c = new THREE.Mesh(coneGeo, thornMat);
+      c.position.set(x, groundH(x, z) + 1.2, z); c.scale.set(0.7 + Math.random() * 0.5, 2.4 + Math.random() * 1.4, 0.7 + Math.random() * 0.5);
+      c.rotation.y = Math.random() * 3; P.add(c);
+    }
+    SF(zi, 'kneel', 60, 55, 0.6, 1);
+    addStation(zi, 60, 55, 15, 'No food but bitter thorn — it does not nourish, and it does not end hunger.', 'Quran 88:6-7');
+    // hamim on iron hooks (Tirmidhi)
+    const hx = -70, hz = -30;
+    post(P, hx - 4, hz, 6); post(P, hx + 4, hz, 6);
+    box(P, ironMat, hx, groundH(hx, hz) + 6, hz, 9, 0.5, 0.5);
+    for (let i = -1; i <= 1; i++) {
+      const hook = new THREE.Mesh(linkGeo, ironMat);
+      hook.position.set(hx + i * 2.6, groundH(hx, hz) + 4.6, hz); P.add(hook);
+    }
+    poolDisc(P, hx, hz, 3, brassMat);
+    SF(zi, 'stand', hx, hz + 5.5, Math.PI, 1);
+    addStation(zi, hx, hz, 16, 'Boiling water, raised on hooks of iron — it melts the face before it ever touches the lips.', 'Tirmidhi 2586');
+  }
+  // ——— DEPTH III — Fields of Chains ———
+  { const zi = 2, P = zoneProps[zi];
+    // the 70-cubit chain (69:30-32)
+    const px = 20, pz = 95, py = groundH(px, pz);
+    post(P, px, pz, 9);
+    const f = SF(zi, 'chained', px + 3.4, pz + 1, -Math.PI / 2.4, 1);
+    chainRun(P, px, py + 9, pz, px + 3.4, py + 2.2, pz + 1, 10);
+    void f;
+    addStation(zi, px, pz, 16, 'Seize him. Fetter him. Then chain him in a chain of seventy cubits.', 'Quran 69:30-32');
+    // maces of iron (22:21-22)
+    const mx = -35, mz = -95, my = groundH(mx, mz);
+    post(P, mx - 5, mz, 8); post(P, mx + 5, mz, 8);
+    box(P, ironMat, mx, my + 8, mz, 11, 0.6, 0.6);
+    for (const off of [-2.4, 2.4]) {
+      const head = box(P, ironMat, mx + off, my + 6, mz, 1.5, 1.5, 1.5);
+      const handle = new THREE.Mesh(barGeo, ironMat);
+      handle.position.set(mx + off, my + 7, mz); handle.scale.set(0.25, 2.4, 0.25); P.add(handle);
+      slammers.push({ mesh: head, baseY: my + 6, seed: Math.random() * 10, prev: 0 });
+    }
+    SF(zi, 'sit', mx, mz, 0, 1);
+    addStation(zi, mx, mz, 17, 'Maces of iron. Every time they try to escape the anguish, they are struck back down.', 'Quran 22:21-22');
+  }
+  // ——— DEPTH IV — City of Faces ———
+  { const zi = 3, P = zoneProps[zi];
+    // garments of fire (22:19)
+    const g = SF(zi, 'stand', 100, -10, -Math.PI / 2, 1);
+    const garb = new THREE.Mesh(shadeTorsoGeo, emberHotMat);
+    garb.position.copy(g.g.position); garb.position.y += 1.15; garb.scale.set(1.18, 1.02, 1.18);
+    P.add(garb);
+    addStation(zi, 100, -10, 15, 'Garments cut from fire, fitted to the body. There is no other cloth here.', 'Quran 22:19');
+    // faces turned in the fire (33:66)
+    for (let i = 0; i < 6; i++) flame(P, -108 + i * 2.4, groundH(-105, 25) + 3.4, 25, 3.4, 7.5, pitTex);
+    SF(zi, 'kneel', -105, 20.5, Math.PI, 1);
+    addStation(zi, -105, 25, 16, 'The Day their faces are turned about in the Fire — wishing, too late, that they had obeyed.', 'Quran 33:66');
+  }
+  // ——— DEPTH V — Sea of Fire ———
+  { const zi = 4, P = zoneProps[zi];
+    // degrees of submersion (Musnad Ahmad)
+    poolDisc(P, 40, -110, 9, lavaMat);
+    riser(P, 38, groundH(38, -112) + 1, -112, 8, 1.4, 3, emberTex);
+    riser(P, 43, groundH(43, -108) + 1, -108, 8, 1.1, 3.4, emberTex);
+    SF(zi, 'submerged', 36.5, -110, 0.5, 1, -0.15);   // ankles
+    SF(zi, 'submerged', 40, -111.5, -0.4, 1, -0.95);  // waist
+    SF(zi, 'submerged', 43.5, -109.5, 2.6, 1, -1.35); // chest
+    addStation(zi, 40, -110, 17, 'Ankles. Knees. Waist. Chest. Swallowed whole. Each one is certain his torment is the worst.', 'Musnad Ahmad');
+    // poured over the head (44:47-48)
+    const qx = -60, qz = 110, qy = groundH(qx, qz);
+    const vessel = new THREE.Mesh(barGeo, ironMat);
+    vessel.position.set(qx, qy + 8.4, qz); vessel.scale.set(1.7, 1.7, 1.7); P.add(vessel);
+    const stream = new THREE.Mesh(barGeo, streamMat);
+    stream.position.set(qx, qy + 4.6, qz); stream.scale.set(0.28, 7.4, 0.28); P.add(stream);
+    pulse(streamMat, 2.6, 0.9, 3.2);
+    SF(zi, 'headback', qx, qz, 0, 1);
+    addStation(zi, qx, qz, 16, 'Seize him, drag him to the middle of the Fire — then pour boiling water over his head. Taste!', 'Quran 44:47-49');
+  }
+  // ——— DEPTH VI — Mirror Abyss ———
+  { const zi = 5, P = zoneProps[zi];
+    // zaqqum (44:43-46; 37:62-68)
+    const zx = 110, zz = 80, zy = groundH(zx, zz);
+    const trunk = new THREE.Mesh(barGeo, thornMat);
+    trunk.position.set(zx, zy + 3.5, zz); trunk.scale.set(1.3, 7, 1.3); P.add(trunk);
+    for (let i = 0; i < 5; i++) {
+      const br = new THREE.Mesh(barGeo, thornMat);
+      const a = (i / 5) * Math.PI * 2;
+      br.position.set(zx + Math.cos(a) * 2.2, zy + 6 + (i % 2), zz + Math.sin(a) * 2.2);
+      br.scale.set(0.4, 4.4, 0.4); br.rotation.z = Math.cos(a) * 1.1; br.rotation.x = Math.sin(a) * 1.1;
+      P.add(br);
+      const fr = new THREE.Mesh(ballGeo, fruitMat);
+      fr.position.set(zx + Math.cos(a) * 3.6, zy + 5.2 + (i % 2), zz + Math.sin(a) * 3.6);
+      fr.scale.setScalar(0.38); P.add(fr);
+    }
+    pulse(fruitMat, 2.4, 0.8, 1.6);
+    SF(zi, 'reach', zx + 2.6, zz + 1.4, -Math.PI / 3, 1);
+    addStation(zi, zx, zz, 17, 'The tree of Zaqqum — food of the sinful. One drop of it would ruin all life on earth.', 'Quran 44:43-46');
+    // zamhareer (Bukhari & Muslim)
+    poolDisc(P, -115, -75, 6, frostMat);
+    pulse(frostMat, 1.5, 0.6, 1.1);
+    flame(P, -115, groundH(-115, -75) + 1.2, -75, 9, 2.6, eyeTex, 0.28);
+    SF(zi, 'shiver', -115, -75, 0.8, 1);
+    addStation(zi, -115, -75, 16, 'And a cold that burns worse than fire — bones cracking in the frost of Hell, begging for the flames again.', 'Bukhari & Muslim');
+  }
+  // ——— DEPTH VII — The Deepest ———
+  { const zi = 6, P = zoneProps[zi];
+    // the seat of judgment stands empty; the call to Malik (43:77)
+    const sx = 0, sz = -140, sy = groundH(sx, sz);
+    box(P, ironMat, sx, sy + 0.5, sz, 3.4, 1, 2.2);
+    box(P, ironMat, sx, sy + 4.2, sz - 0.8, 3.4, 7.4, 0.8);
+    flame(P, sx, sy + 4.5, sz - 0.6, 8, 11, pitTex, 0.5);
+    SF(zi, 'sit', sx + 5.5, sz + 1, -Math.PI / 2.2, 1);
+    // cage beside the seat
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const bar = new THREE.Mesh(postGeo, ironMat);
+      bar.position.set(sx - 6.5 + Math.cos(a) * 1.6, sy + 1.6, sz + 3 + Math.sin(a) * 1.6);
+      bar.scale.set(0.5, 3.2, 0.5); P.add(bar);
+    }
+    SF(zi, 'sit', sx - 6.5, sz + 3, 0.4, 0.95);
+    addStation(zi, sx, sz, 18, 'They will call: O Malik, ask your Lord to end us. And the answer, after a thousand years of silence: You will remain.', 'Quran 43:77');
+    // skins renewed (4:56) — the burn-and-restore cycle
+    const rxf = SF(zi, 'stand', 55, 140, -0.6, 1.05);
+    flame(P, rxf.g.position.x, rxf.g.position.y + 1.4, rxf.g.position.z, 4.5, 6.5, pitTex, 0.75);
+    addStation(zi, 55, 140, 16, 'Every time their skins burn through, they are given new skins — so the pain never dulls. Forever.', 'Quran 4:56');
+  }
+
+  pulse(emberHotMat, 2.0, 0.7, 2.0);
+  pulse(brassMat, 1.8, 0.6, 2.4);
+  pulse(lavaMat, 1.6, 0.55, 1.7);
+}
+
+// the one who walks: a silhouette pacing its circle, never stopping, never arriving
+let wanderer: Shade | null = null;
+let wanderAngle = 0;
+function buildWanderer() {
+  wanderer = makeShade('walk', 45, 0, 0, 1.02);
+}
+
+let fxT = 0;
+function thud() {
+  if (!actx) return;
+  try {
+    const t = actx.currentTime;
+    const o = actx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(58, t);
+    o.frequency.exponentialRampToValueAtTime(30, t + 0.35);
+    const g = actx.createGain();
+    g.gain.setValueAtTime(0.22, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+    o.connect(g); g.connect(actx.destination);
+    o.start(t); o.stop(t + 0.5);
+  } catch { /* noop */ }
+}
+
+function updateFigures(dt: number) {
+  fxT += dt;
+  for (const p of pulsers) p.m.emissiveIntensity = p.base + Math.sin(fxT * p.speed + p.seed) * p.amp;
+  for (const r of risers) {
+    const k = ((fxT * r.speed + r.seed) % r.h) / r.h;
+    r.sp.position.set(r.x, r.y0 + k * r.h, r.z);
+    (r.sp.material as THREE.SpriteMaterial).opacity = r.op * (1 - k * 0.75);
+  }
+  for (const f of flames) {
+    const s = 1 + 0.16 * Math.sin(fxT * 9 + f.seed) + 0.09 * Math.sin(fxT * 23 + f.seed * 2);
+    f.sp.scale.set(f.bx * s, f.by * (2 - s), 1);
+  }
+  for (const s of slammers) {
+    const ph = (fxT * 0.45 + s.seed) % 1;
+    if (s.prev < 0.9 && ph >= 0.9 && phase === 'playing') {
+      const d = Math.hypot(camera.position.x - s.mesh.position.x, camera.position.z - s.mesh.position.z);
+      if (d < 45) { flash(0.22); thud(); }
+    }
+    s.prev = ph;
+    s.mesh.position.y = ph > 0.9 ? s.baseY - ((ph - 0.9) / 0.1) * 6.2 : s.baseY + Math.sin(fxT * 1.2 + s.seed) * 0.3;
+  }
+  for (const s of sufferers) {
+    if (s === wanderer || !s.g.visible) continue;
+    const t = fxT, sd = s.seed;
+    if (s.mode === 'chained') {
+      s.torso.rotation.z = Math.sin(t * 1.4 + sd) * 0.09;
+      s.armL.rotation.x = Math.sin(t * 6.3 + sd) * 0.08;
+      s.armR.rotation.x = Math.sin(t * 6.9 + sd + 1) * 0.08;
+      s.head.rotation.z = Math.sin(t * 0.9 + sd) * 0.12;
+    } else if (s.mode === 'kneel') {
+      s.g.rotation.x = Math.sin(t * 0.8 + sd) * 0.07;
+      s.head.rotation.x = 0.5 + Math.sin(t * 0.8 + sd) * 0.1;
+    } else if (s.mode === 'submerged') {
+      s.g.position.y = s.baseY + Math.sin(t * 1.2 + sd) * 0.14;
+      s.head.rotation.x = -0.5 + Math.sin(t * 1.2 + sd) * 0.12;
+    } else if (s.mode === 'reach') {
+      s.armR.rotation.x = -2.7 + Math.sin(t * 1.1 + sd) * 0.16;
+      s.torso.rotation.x = Math.sin(t * 1.1 + sd) * 0.05;
+    } else if (s.mode === 'sit') {
+      const sh = Math.pow(Math.max(0, Math.sin(t * 0.45 + sd)), 24);
+      s.torso.rotation.z = sh * Math.sin(t * 28) * 0.12;
+      s.head.rotation.x = 0.55 + sh * 0.1;
+    } else if (s.mode === 'shiver') {
+      s.torso.position.x = Math.sin(t * 23 + sd) * 0.02;
+      s.armL.rotation.x = Math.sin(t * 23 + sd) * 0.07;
+      s.armR.rotation.x = Math.sin(t * 21 + sd + 2) * 0.07;
+      s.head.rotation.z = Math.sin(t * 19 + sd) * 0.05;
+    } else { // stand / headback — the light tremble
+      s.torso.rotation.x = Math.sin(t * 4.7 + sd) * 0.02;
+    }
+  }
+  if (wanderer) {
+    wanderAngle += dt * 0.028;
+    const r = 45;
+    const wx = Math.cos(wanderAngle) * r, wz = Math.sin(wanderAngle) * r;
+    wanderer.g.position.set(wx, groundH(wx, wz), wz);
+    wanderer.g.rotation.y = Math.atan2(-Math.sin(wanderAngle), Math.cos(wanderAngle));
+    const sw = Math.sin(fxT * 3.4);
+    wanderer.legL.rotation.x = sw * 0.5; wanderer.legR.rotation.x = -sw * 0.5;
+    wanderer.armL.rotation.x = -sw * 0.35; wanderer.armR.rotation.x = sw * 0.35;
+    wanderer.g.position.y += Math.abs(Math.cos(fxT * 3.4)) * 0.05;
+  }
+}
+
+function triggerStation(st: Station) {
+  st.last = fxT;
+  flash(0.6);
+  screamBurst();
+  showSubtitle('\u201C' + st.line + '\u201D  — ' + st.ref, 6.5);
+  speak(st.line);
+  thirst = Math.min(100, thirst + 6);
+  sanity = Math.max(0, sanity - 8);
+  whisperTimer = 2;
+}
+
+function updateStations() {
+  if (phase !== 'playing') return;
+  for (const st of stationsByZone[zoneIdx]) {
+    if (fxT - st.last < 90) continue;
+    const d = Math.hypot(camera.position.x - st.x, camera.position.z - st.z);
+    if (d < st.r) triggerStation(st);
+  }
+  // the walker, noticed once
+  if (wanderer && !((updateStations as unknown as { seen?: boolean }).seen)) {
+    const d = Math.hypot(camera.position.x - wanderer.g.position.x, camera.position.z - wanderer.g.position.z);
+    if (d < 22) {
+      (updateStations as unknown as { seen?: boolean }).seen = true;
+      showSubtitle('\u201COne of them walks. He cannot stop. There is nowhere to go.\u201D', 5);
+    }
+  }
 }
 
 // ---------------------------------------------------------------- audio (all procedural)
@@ -378,6 +782,46 @@ function screamBurst() {
   o.start(t); o.stop(t + 2);
 }
 
+// ---------------------------------------------------------------- spoken reminders
+// A loud voice over the torment: SpeechSynthesis, no audio files needed.
+let voiceOn = true;
+let chosenVoice: SpeechSynthesisVoice | null = null;
+function pickVoice() {
+  try {
+    const vs = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith('en'));
+    chosenVoice =
+      vs.find((v) => /male|daniel|david|alex|fred|james|george/i.test(v.name)) ||
+      vs.find((v) => /google uk english male|google us english/i.test(v.name)) ||
+      vs[0] || null;
+  } catch { chosenVoice = null; }
+}
+if ('speechSynthesis' in window) {
+  pickVoice();
+  try { speechSynthesis.onvoiceschanged = pickVoice; } catch { /* noop */ }
+}
+function speak(text: string) {
+  if (!voiceOn || !('speechSynthesis' in window)) return;
+  try {
+    speechSynthesis.cancel();
+    speechSynthesis.resume();
+    const u = new SpeechSynthesisUtterance(text);
+    u.volume = 1; u.rate = 0.95; u.pitch = 0.5;
+    if (chosenVoice) u.voice = chosenVoice;
+    speechSynthesis.speak(u);
+  } catch { /* voice unavailable — subtitles still carry it */ }
+}
+
+// One spoken reminder per depth, on entry.
+const ZONE_VOICE = [
+  'The lightest punishment in Hell: sandals of fire that make the brain boil. And this is only the first depth.',
+  'They will beg for food, and be fed bitter thorn, that neither nourishes, nor ends hunger.',
+  'Seize him. Fetter him. Then chain him, in a chain of seventy cubits.',
+  'Garments of fire are cut for them. And faces are turned over in the flames.',
+  'Some drown to the ankles. Some to the waist. Some are swallowed whole. And boiling water is poured over their heads.',
+  'Eat from the tree of Zaqqum. It boils in the belly like molten metal. And beside it, a cold that cracks the bones.',
+  'They will call: O Malik, ask your Lord to end us. And after a thousand years of silence, the answer comes: You will remain.',
+];
+
 // ---------------------------------------------------------------- game state
 type Phase = 'menu' | 'playing' | 'overlay' | 'ended';
 let phase: Phase = 'menu';
@@ -422,6 +866,10 @@ function setZone(i: number) {
   zoneNameEl.textContent = z.name;
   depthEl.textContent = `DEPTH: ${zoneIdx + 1} / 7 — ${z.flavor}`;
   placeGate(zoneIdx);
+  // only this depth's punishments stand visible; the voice names the depth
+  zoneProps.forEach((g, i) => (g.visible = i === zoneIdx));
+  zoneFigs.forEach((arr, i) => arr.forEach((f) => (f.g.visible = i === zoneIdx)));
+  speak(ZONE_VOICE[zoneIdx]);
   // reset player to spawn, keep meters (suffering accumulates)
   camera.position.set(spawnPos.x, 1.7, spawnPos.z);
   vel.set(0, 0, 0);
@@ -462,6 +910,7 @@ function collapse() {
 function finish() {
   phase = 'ended';
   unlockPointer();
+  speak('This was only a game, and you can still leave. Pray. Forgive. Repent. The gate of mercy is still open — for now.');
   fadeEl.style.opacity = '1';
   setTimeout(() => {
     $('overlay-title').textContent = 'THE DEEPEST';
@@ -478,6 +927,12 @@ addEventListener('keydown', (e) => {
   // [ / ] tune look speed live
   if (e.code === 'BracketLeft') setSensitivity(sensitivity - 0.0006);
   if (e.code === 'BracketRight') setSensitivity(sensitivity + 0.0006);
+  // M mutes / unmutes the speaking voice
+  if (e.code === 'KeyM') {
+    voiceOn = !voiceOn;
+    try { if (!voiceOn && 'speechSynthesis' in window) speechSynthesis.cancel(); } catch { /* noop */ }
+    showCenter(voiceOn ? 'The voice returns.' : 'The voice falls silent. The torment does not.', 2.2);
+  }
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('resize', () => {
@@ -763,13 +1218,16 @@ function updateAmbience(dt: number) {
 
 // ---------------------------------------------------------------- loop
 placeGate(0);
+buildStations();
+buildWanderer();
 fadeEl.style.opacity = '1'; // starts black behind menu
 
 function loop() {
   requestAnimationFrame(loop);
   const dt = Math.min(clock.getDelta(), 0.05);
-  if (phase === 'playing') updatePlayer(dt);
+  if (phase === 'playing') { updatePlayer(dt); updateStations(); }
   updateAmbience(dt);
+  updateFigures(dt);
   renderer.render(scene, camera);
 }
 loop();
