@@ -18,31 +18,31 @@ interface Zone {
 const ZONES: Zone[] = [
   { name: 'I — Wastes of Thirst', entry: 'You wake on burning sand. Your tongue sticks to your mouth.',
     fog: 0x1a0803, fogDensity: 0.016, ground: 0x2a0f06, skyTop: 0x000000, skyBottom: 0x5a1400,
-    ambient: 0.55, thirstRate: 2.2, burdenRate: 0.5, whisperGap: [14, 26],
+    ambient: 0.55, thirstRate: 1.3, burdenRate: 0.5, whisperGap: [14, 26],
     flavor: 'No water. Only mirage.' },
   { name: 'II — Pit of Whispers', entry: 'The fog thickens. Voices know your name.',
     fog: 0x12060a, fogDensity: 0.030, ground: 0x1c0a08, skyTop: 0x000000, skyBottom: 0x3a0a12,
-    ambient: 0.42, thirstRate: 2.6, burdenRate: 0.8, whisperGap: [8, 16],
+    ambient: 0.42, thirstRate: 1.6, burdenRate: 0.8, whisperGap: [8, 16],
     flavor: 'They whisper what you did in secret.' },
   { name: 'III — Fields of Chains', entry: 'Something heavy is now tied to you. Walk.',
     fog: 0x0d0603, fogDensity: 0.022, ground: 0x201006, skyTop: 0x000000, skyBottom: 0x4a1e00,
-    ambient: 0.38, thirstRate: 3.0, burdenRate: 1.6, whisperGap: [10, 18],
+    ambient: 0.38, thirstRate: 1.9, burdenRate: 1.6, whisperGap: [10, 18],
     flavor: 'Every step is heavier. This is the weight of neglect.' },
   { name: 'IV — City of Faces', entry: 'Walls rise. Eyes open on every side. You are seen.',
     fog: 0x0a0408, fogDensity: 0.020, ground: 0x160a0c, skyTop: 0x050005, skyBottom: 0x3a0a1a,
-    ambient: 0.34, thirstRate: 3.4, burdenRate: 1.4, whisperGap: [7, 14],
+    ambient: 0.34, thirstRate: 2.1, burdenRate: 1.4, whisperGap: [7, 14],
     flavor: 'Do not stare back. Keep walking.' },
   { name: 'V — Sea of Fire', entry: 'The ground ends. Only flame remains. Cross.',
     fog: 0x1c0500, fogDensity: 0.014, ground: 0x3a0d00, skyTop: 0x000000, skyBottom: 0x8a2400,
-    ambient: 0.6, thirstRate: 4.2, burdenRate: 1.2, whisperGap: [9, 16],
+    ambient: 0.6, thirstRate: 2.6, burdenRate: 1.2, whisperGap: [9, 16],
     flavor: 'The heat drinks your breath.' },
   { name: 'VI — Mirror Abyss', entry: 'Still black water. Look — if you dare.',
     fog: 0x020202, fogDensity: 0.026, ground: 0x050505, skyTop: 0x000000, skyBottom: 0x140a0a,
-    ambient: 0.25, thirstRate: 3.6, burdenRate: 2.0, whisperGap: [6, 12],
+    ambient: 0.25, thirstRate: 2.3, burdenRate: 2.0, whisperGap: [6, 12],
     flavor: 'Your life replays. No excuses work here.' },
   { name: 'VII — The Deepest', entry: 'No gate. No direction. No death. Only remaining.',
     fog: 0x000000, fogDensity: 0.034, ground: 0x000000, skyTop: 0x000000, skyBottom: 0x0a0000,
-    ambient: 0.16, thirstRate: 5.0, burdenRate: 2.4, whisperGap: [4, 9],
+    ambient: 0.16, thirstRate: 3.2, burdenRate: 2.4, whisperGap: [4, 9],
     flavor: 'This was only a game. The real one has no pause.' },
 ];
 
@@ -365,8 +365,8 @@ const gateGlow = new THREE.Sprite(gateGlowMat);
 gateGlow.scale.set(16, 22, 1); gateGlow.position.y = 7;
 gateGroup.add(gateGlow);
 // red beam pillar — visible across the whole map through fog, so the Gate is never lost
-const beamMat = new THREE.MeshBasicMaterial({ color: 0xff2d00, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
-const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 2.2, 150, 10, 1, true), beamMat);
+const beamMat = new THREE.MeshBasicMaterial({ color: 0xff2d00, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
+const beam = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 3.2, 150, 10, 1, true), beamMat);
 beam.position.y = 75;
 gateGroup.add(beam);
 scene.add(gateGroup);
@@ -377,7 +377,7 @@ function placeGate(zoneIdx: number) {
   // gates spawn ahead of where you face (±~55°), so looking around finds them
   const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
   const a = Math.atan2(fz, fx) + (Math.random() - 0.5) * 1.9;
-  const dist = 55 + zoneIdx * 5 + Math.random() * 20;
+  const dist = (zoneIdx === 0 ? 35 : 55) + zoneIdx * 5 + Math.random() * 20;
   gateGroup.position.set(
     THREE.MathUtils.clamp(camera.position.x + Math.cos(a) * dist, -170, 170),
     0,
@@ -1662,7 +1662,7 @@ function updateAudio(dt: number) {
 type Phase = 'menu' | 'playing' | 'overlay' | 'ended';
 let phase: Phase = 'menu';
 let zoneIdx = 0;
-let thirst = 12, burden = 5, sanity = 100, stamina = 100;
+let thirst = 8, burden = 5, sanity = 100, stamina = 100;
 let whisperTimer = 6;
 let warnedFall = false; // pre-collapse warning, once per depth
 let subTimer = 0;
@@ -1750,8 +1750,9 @@ function collapse() {
       : 'Your heart could not carry the dread. You did not reach the Gate in time.') +
     '\n\n' +
     COLLAPSE_TEXTS[Math.floor(Math.random() * COLLAPSE_TEXTS.length)] +
-    '\n\nBut there is no death here. Only rising — and descending again. (Thirst and Burden remain.)';
+    '\n\nBut there is no death here. Only rising — and descending again. (Thirst and Burden remain. You rise on your own.)';
   overlayEl.classList.remove('hidden');
+  setTimeout(() => { if (phase === 'overlay') riseAgain(true); }, 2600);
 }
 
 function finish() {
@@ -1867,16 +1868,10 @@ $('start-btn').addEventListener('click', () => {
     if (phase === 'playing') showCenter('One is chained to you. Where you walk, he follows — watch what waits for you.', 4.5);
   }, 7000);
 });
-$('overlay-btn').addEventListener('click', () => {
+// rising is automatic — falling is a stumble, never an ending
+function riseAgain(auto: boolean) {
+  if (phase !== 'overlay') return;
   overlayEl.classList.add('hidden');
-  if (phase === 'ended') {
-    // restart whole descent
-    thirst = 12; burden = 5; sanity = 100;
-    yaw = 0; pitch = 0;
-    applyLook(); setLookModeLabel('CLICK');
-    phase = 'playing'; setZone(0); lockPointer();
-    return;
-  }
   // rise again in same zone, meters eased so progress stays possible in deep zones
   thirst = Math.max(35, thirst - 45);
   burden = Math.max(0, burden - 12);
@@ -1886,8 +1881,27 @@ $('overlay-btn').addEventListener('click', () => {
   vel.set(0, 0, 0);
   phase = 'playing';
   fadeEl.style.opacity = '0';
-  lockPointer();
+  if (auto) {
+    // no click gesture here, so capture may fail — offer click-to-capture instead
+    showCenter('Click to capture the mouse and keep walking.', 2.5);
+    const relock = () => { if (phase === 'playing') lockPointer(); document.body.removeEventListener('click', relock); };
+    setTimeout(() => document.body.addEventListener('click', relock), 300);
+  } else {
+    lockPointer();
+  }
   showSubtitle('You rise. The thirst stayed with you.', 4);
+}
+$('overlay-btn').addEventListener('click', () => {
+  if (phase === 'ended') {
+    // restart whole descent
+    thirst = 8; burden = 5; sanity = 100;
+    yaw = 0; pitch = 0;
+    applyLook(); setLookModeLabel('CLICK');
+    overlayEl.classList.add('hidden');
+    phase = 'playing'; setZone(0); lockPointer();
+    return;
+  }
+  riseAgain(false);
 });
 
 // touch: left half = move stick, right half = look drag
@@ -2032,7 +2046,7 @@ function updatePlayer(dt: number) {
     finish();
   }
 
-  if (!warnedFall && (thirst > 85 || sanity < 15)) {
+  if (!warnedFall && (thirst > 70 || sanity < 15)) {
     warnedFall = true;
     showCenter('You are falling — reach the Gate!', 3);
     speak('You are falling. Reach the gate.');
